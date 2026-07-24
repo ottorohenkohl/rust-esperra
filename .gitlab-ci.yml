@@ -1,0 +1,45 @@
+stages:
+  - check
+  - build
+
+variables:
+  CARGO_TERM_COLOR: always
+  RUST_TARGET: riscv32imac-unknown-none-elf
+
+.rust-setup: &rust-setup
+  - rustup target add "$RUST_TARGET"
+
+check:fmt:
+  stage: check
+  image: rust:slim
+  before_script:
+    - rustup component add rustfmt
+  script:
+    - cargo fmt --all -- --check
+
+check:clippy:
+  stage: check
+  image: rust:slim
+  before_script:
+    - *rust-setup
+    - rustup component add clippy
+  script:
+    - cargo clippy --all-features --workspace -- -D warnings
+
+build:firmware:
+  stage: build
+  image: rust:slim
+  before_script:
+    - *rust-setup
+    - apt-get update && apt-get install -y --no-install-recommends curl unzip && rm -rf /var/lib/apt/lists/*
+    - curl -fsSL -o /tmp/espflash.zip "https://github.com/esp-rs/espflash/releases/latest/download/espflash-x86_64-unknown-linux-gnu.zip"
+    - unzip -o /tmp/espflash.zip -d /usr/local/bin
+    - chmod +x /usr/local/bin/espflash
+  script:
+    - cargo build --release
+    - espflash save-image --chip esp32c6 --merge target/riscv32imac-unknown-none-elf/release/esperra firmware.bin
+  artifacts:
+    name: "esperra-firmware-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - firmware.bin
+    expire_in: 30 days
