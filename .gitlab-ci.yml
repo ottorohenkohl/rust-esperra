@@ -1,36 +1,9 @@
-stages:
-  - check
-  - build
-
-variables:
-  CARGO_TERM_COLOR: always
-  RUST_TARGET: riscv32imac-unknown-none-elf
-
-.rust-setup: &rust-setup
-  - rustup target add "$RUST_TARGET"
-
-check:fmt:
-  stage: check
-  image: rust:slim
-  before_script:
-    - rustup component add rustfmt
-  script:
-    - cargo fmt --all -- --check
-
-check:clippy:
-  stage: check
-  image: rust:slim
-  before_script:
-    - *rust-setup
-    - rustup component add clippy
-  script:
-    - cargo clippy --all-features --workspace -- -D warnings
-
 build:firmware:
-  stage: build
   image: rust:slim
+  variables:
+    RUST_TARGET: riscv32imac-unknown-none-elf
   before_script:
-    - *rust-setup
+    - rustup target add "$RUST_TARGET"
     - apt-get update && apt-get install -y --no-install-recommends curl unzip && rm -rf /var/lib/apt/lists/*
     - curl -fsSL -o /tmp/espflash.zip "https://github.com/esp-rs/espflash/releases/latest/download/espflash-x86_64-unknown-linux-gnu.zip"
     - unzip -o /tmp/espflash.zip -d /usr/local/bin

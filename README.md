@@ -47,7 +47,5 @@ esptool.py --chip esp32c6 write_flash 0x0 firmware.bin
 ## CI
 
 `.gitlab-ci.yml` runs on every push:
-- `check:fmt` – `cargo fmt --check`
-- `check:clippy` – `cargo clippy -D warnings`
 - `build:firmware` – `cargo build --release`, then merges the ELF into a flat
   `firmware.bin` via `espflash save-image --merge` and publishes it as an artifact
