@@ -24,6 +24,3 @@ target/
 
 # Ignore .DS_Store file in mac
 **/.DS_Store
-
-# Flashable firmware image produced by CI
-firmware.bin

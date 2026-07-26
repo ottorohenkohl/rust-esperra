@@ -1,16 +1,10 @@
 build:firmware:
-  image: rust:slim
-  variables:
-    RUST_TARGET: riscv32imac-unknown-none-elf
+  image: espressif/idf-rust:esp32s3_latest
   before_script:
-    - rustup target add "$RUST_TARGET"
-    - apt-get update && apt-get install -y --no-install-recommends curl unzip && rm -rf /var/lib/apt/lists/*
-    - curl -fsSL -o /tmp/espflash.zip "https://github.com/esp-rs/espflash/releases/latest/download/espflash-x86_64-unknown-linux-gnu.zip"
-    - unzip -o /tmp/espflash.zip -d /usr/local/bin
-    - chmod +x /usr/local/bin/espflash
+    - . "$HOME/export-esp.sh"
   script:
     - cargo build --release
-    - espflash save-image --chip esp32c6 --merge target/riscv32imac-unknown-none-elf/release/esperra firmware.bin
+    - espflash save-image --chip esp32s3 --merge target/xtensa-esp32s3-none-elf/release/esperra firmware.bin
   artifacts:
     name: "esperra-firmware-$CI_COMMIT_SHORT_SHA"
     paths:

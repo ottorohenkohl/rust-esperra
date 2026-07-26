@@ -1,15 +1,12 @@
 #![no_std]
 #![no_main]
 
-use esp_hal::clock::CpuClock;
-use esp_hal::timer::timg::TimerGroup;
-
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-
-use log::info;
-
 use esp_backtrace as _;
+use esp_hal::clock::CpuClock;
+use esp_hal::timer::timg::TimerGroup;
+use log::info;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -18,7 +15,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     // generator version: 1.3.0
-    // generator parameters: --chip esp32c6 -o unstable-hal -o embassy -o esp-backtrace -o log -o ci
+    // generator parameters: --chip esp32s3 -o unstable-hal -o embassy -o esp-backtrace -o log -o ci
 
     esp_println::logger::init_logger_from_env();
 
