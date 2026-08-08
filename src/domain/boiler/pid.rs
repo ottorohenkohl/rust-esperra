@@ -14,11 +14,7 @@ impl Pid {
         let last_temperature = 0.0;
         let stored_integral = 0.0;
 
-        Self {
-            config_provider,
-            last_temperature,
-            stored_integral,
-        }
+        Self { config_provider, last_temperature, stored_integral }
     }
 
     pub fn compute(&mut self, target_temperature: f64, actual_temperature: f64) -> f64 {
@@ -33,8 +29,7 @@ impl Pid {
 
         let proportional = pid_gains.k_proportional * temperature_error;
         let derivative = pid_gains.k_derivative * temperature_change / interval_size;
-        let raw_integral =
-            pid_gains.k_intergral * temperature_error * interval_size + self.stored_integral;
+        let raw_integral = pid_gains.k_intergral * temperature_error * interval_size + self.stored_integral;
 
         let raw_output = proportional + raw_integral + derivative;
 
