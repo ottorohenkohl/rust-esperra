@@ -37,7 +37,7 @@ impl<'d> FlashConfigProvider<'d> {
             pid_gains = PidGains {
                 k_proportional: Self::read_f64(&record, 28),
                 k_intergral: Self::read_f64(&record, 36),
-                k_derivative: Self::read_f64(&record, 40),
+                k_derivative: Self::read_f64(&record, 44),
             };
         }
 
@@ -58,7 +58,7 @@ impl<'d> FlashConfigProvider<'d> {
     fn encode(heater_options: HeaterOptions, pid_gains: PidGains) -> [u8; RECORD_SIZE] {
         let mut record = [0xff; RECORD_SIZE];
 
-        record[..4].copy_from_slice(&MAGIC_RECORD.to_be_bytes());
+        record[..2].copy_from_slice(&MAGIC_RECORD.to_le_bytes());
 
         record[4..12].copy_from_slice(&heater_options.heating_cycle_ms.to_le_bytes());
         record[12..20].copy_from_slice(&heater_options.target_temperature.to_le_bytes());
