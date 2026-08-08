@@ -31,7 +31,13 @@ impl Heater {
             return self.cycle_start = self.cycle_start.now();
         }
 
-        let actual_temperature = self.temperature_sensor.read_temperature();
+        let actual_temperature = match self.temperature_sensor.read_temperature() {
+            Ok(temperature) => temperature,
+            Err(_) => {
+                self.heating_element.set_active(false);
+                return;
+            }
+        };
         let pid_percentage = self.local_pid.compute(heater_options.target_temperature, actual_temperature);
 
         let heating_window_ms = heater_options.heating_cycle_ms as f64 * pid_percentage / 100.0;

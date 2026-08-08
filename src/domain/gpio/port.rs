@@ -7,6 +7,10 @@ pub trait OutputDevice {
     fn set_active(&mut self, active: bool);
 }
 
+pub enum TemperatureSensorError {
+    ReadFailed,
+}
+
 pub trait TemperatureSensor {
-    fn read_temperature(&mut self) -> f64;
+    fn read_temperature(&mut self) -> Result<f64, TemperatureSensorError>;
 }

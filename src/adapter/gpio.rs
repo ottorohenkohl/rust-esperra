@@ -1,4 +1,6 @@
-use crate::domain::gpio::port::{InputDevice, OutputDevice, TemperatureSensor};
+use crate::domain::gpio::port::{
+    InputDevice, OutputDevice, TemperatureSensor, TemperatureSensorError,
+};
 
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin, Pull};
@@ -9,7 +11,6 @@ const BLINK_DURATION_MS: u32 = 250;
 pub struct Ds18b20Sensor<'d> {
     bus: OneWire<esp_hal::gpio::Flex<'d>>,
     sensor: DS18B20,
-    last_temperature: f64,
 }
 
 impl<'d> Ds18b20Sensor<'d> {
@@ -23,27 +24,23 @@ impl<'d> Ds18b20Sensor<'d> {
         Self {
             bus: OneWire::new(pin, false),
             sensor: DS18B20::new(Device { address }).unwrap(),
-            last_temperature: 0.0,
         }
     }
 }
 
 impl TemperatureSensor for Ds18b20Sensor<'_> {
-    fn read_temperature(&mut self) -> f64 {
+    fn read_temperature(&mut self) -> Result<f64, TemperatureSensorError> {
         let mut delay = Delay::new();
-        let result = self
+        let raw_temperature = self
             .sensor
             .measure_temperature(&mut self.bus, &mut delay)
             .and_then(|resolution| {
                 delay.delay_millis(resolution.time_ms() as u32);
                 self.sensor.read_temperature(&mut self.bus, &mut delay)
-            });
+            })
+            .map_err(|_| TemperatureSensorError::ReadFailed)?;
 
-        if let Ok(raw_temperature) = result {
-            self.last_temperature = raw_temperature as i16 as f64 / 16.0;
-        }
-
-        self.last_temperature
+        Ok(raw_temperature as i16 as f64 / 16.0)
     }
 }
 pub struct EspInputDevice<'d> {
