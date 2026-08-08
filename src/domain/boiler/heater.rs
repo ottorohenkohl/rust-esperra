@@ -10,14 +10,14 @@ use alloc::sync::Arc;
 pub struct Heater {
     config_provider: Arc<dyn ConfigProvider>,
     cycle_start: Box<dyn Instant>,
-    heating_element: Arc<dyn OutputDevice>,
+    heating_element: Box<dyn OutputDevice>,
     temperature_sensor: Arc<dyn TemperatureSensor>,
 
     local_pid: Pid,
 }
 
 impl Heater {
-    pub fn new(cycle_start: Box<dyn Instant>, config_provider: Arc<dyn ConfigProvider>, heating_element: Arc<dyn OutputDevice>, temperature_sensor: Arc<dyn TemperatureSensor>) -> Self {
+    pub fn new(cycle_start: Box<dyn Instant>, config_provider: Arc<dyn ConfigProvider>, heating_element: Box<dyn OutputDevice>, temperature_sensor: Arc<dyn TemperatureSensor>) -> Self {
         let local_pid = Pid::new(Arc::clone(&config_provider));
 
         Self { cycle_start, config_provider, heating_element, temperature_sensor, local_pid }
