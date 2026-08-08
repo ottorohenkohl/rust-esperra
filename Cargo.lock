@@ -304,7 +304,6 @@ dependencies = [
  "document-features",
  "embassy-executor-macros",
  "embassy-executor-timer-queue",
- "log",
 ]
 
 [[package]]
@@ -396,7 +395,6 @@ dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "futures-core",
- "log",
 ]
 
 [[package]]
@@ -830,15 +828,12 @@ name = "esperra"
 version = "0.1.0"
 dependencies = [
  "critical-section",
- "embassy-executor",
- "embassy-time",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-println",
  "esp-rtos",
  "log",
- "static_cell",
 ]
 
 [[package]]
@@ -1407,15 +1402,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "static_cell"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0530892bb4fa575ee0da4b86f86c667132a94b74bb72160f58ee5a4afec74c23"
-dependencies = [
- "portable-atomic",
-]
-
-[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1475,18 +1461,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.19"
+version = "2.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09a43598840e33d5b0331f38c5e30d13bb11c11210a4b58f0d9b18a5a5eefcd9"
+checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.19"
+version = "2.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43cbfe0cf76104d42a574802844187e84a305e531ed54455f11fbde0f10541cd"
+checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote",
