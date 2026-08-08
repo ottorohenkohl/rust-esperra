@@ -1,84 +1,135 @@
 use crate::domain::gpio::port::{InputDevice, OutputDevice};
 
 use core::cell::RefCell;
+use critical_section::Mutex;
+use embassy_futures::select::{select, Either};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex,
+    channel::{Channel, TrySendError},
+    signal::Signal,
+};
+use embassy_time::{Duration, Timer};
 use esp_hal::{
-    delay::Delay,
     gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin},
 };
 
+const BLINK_DURATION: Duration = Duration::from_millis(250);
+
+enum OutputCommand {
+    Blink,
+}
+
+pub struct OutputResources {
+    commands: Channel<CriticalSectionRawMutex, OutputCommand, 1>,
+    active_changed: Signal<CriticalSectionRawMutex, ()>,
+    active: Mutex<RefCell<bool>>,
+    blinking: Mutex<RefCell<bool>>,
+}
+
+impl OutputResources {
+    pub const fn new() -> Self {
+        Self {
+            commands: Channel::new(),
+            active_changed: Signal::new(),
+            active: Mutex::new(RefCell::new(false)),
+            blinking: Mutex::new(RefCell::new(false)),
+        }
+    }
+
+    fn active(&self) -> bool {
+        critical_section::with(|cs| *self.active.borrow(cs).borrow())
+    }
+}
+
 pub struct EspInputDevice<'d> {
     pin: Input<'d>,
-    powered_level: Level,
 }
 
 impl<'d> EspInputDevice<'d> {
-    pub fn new(pin: impl InputPin + 'd, config: InputConfig, powered_level: Level) -> Self {
+    pub fn new(pin: impl InputPin + 'd, pull: esp_hal::gpio::Pull) -> Self {
         Self {
-            pin: Input::new(pin, config),
-            powered_level,
+            pin: Input::new(pin, InputConfig::default().with_pull(pull)),
         }
     }
 }
 
 impl InputDevice for EspInputDevice<'_> {
     fn powered_state(&self) -> bool {
-        match self.powered_level {
-            Level::High => self.pin.is_high(),
-            Level::Low => self.pin.is_low(),
+        self.pin.is_high()
+    }
+}
+
+pub struct EspOutputDevice {
+    resources: &'static OutputResources,
+}
+
+impl EspOutputDevice {
+    pub const fn new(resources: &'static OutputResources) -> Self {
+        Self { resources }
+    }
+
+    pub async fn run<'d>(&self, pin: impl OutputPin + 'd) -> ! {
+        let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
+
+        loop {
+            match select(
+                self.resources.commands.receive(),
+                self.resources.active_changed.wait(),
+            )
+            .await
+            {
+                Either::First(OutputCommand::Blink) => {
+                    pin.set_high();
+                    Timer::after(BLINK_DURATION).await;
+                    if self.resources.active() {
+                        pin.set_high();
+                    } else {
+                        pin.set_low();
+                    }
+                    critical_section::with(|cs| {
+                        *self.resources.blinking.borrow(cs).borrow_mut() = false;
+                    });
+                }
+                Either::Second(()) => {
+                    if self.resources.active() {
+                        pin.set_high();
+                    } else {
+                        pin.set_low();
+                    }
+                }
+            }
         }
     }
 }
 
-pub struct EspOutputDevice<'d> {
-    pin: RefCell<Output<'d>>,
-    active_level: Level,
-    blink_duration_ms: u32,
-}
-
-impl<'d> EspOutputDevice<'d> {
-    pub fn new(
-        pin: impl OutputPin + 'd,
-        config: OutputConfig,
-        active_level: Level,
-        blink_duration_ms: u32,
-    ) -> Self {
-        Self {
-            pin: RefCell::new(Output::new(pin, Self::inactive_level(active_level), config)),
-            active_level,
-            blink_duration_ms,
-        }
-    }
-
-    fn inactive_level(active_level: Level) -> Level {
-        match active_level {
-            Level::High => Level::Low,
-            Level::Low => Level::High,
-        }
-    }
-
-    fn set_level(&self, level: Level) {
-        let mut pin = self.pin.borrow_mut();
-        match level {
-            Level::High => pin.set_high(),
-            Level::Low => pin.set_low(),
-        }
-    }
-}
-
-impl OutputDevice for EspOutputDevice<'_> {
+impl OutputDevice for EspOutputDevice {
     fn blink_once(&self) {
-        self.set_level(self.active_level);
-        let delay = Delay::new();
-        delay.delay_millis(self.blink_duration_ms);
-        self.set_level(Self::inactive_level(self.active_level));
+        let should_blink = critical_section::with(|cs| {
+            let mut blinking = self.resources.blinking.borrow(cs).borrow_mut();
+            if *blinking {
+                false
+            } else {
+                *blinking = true;
+                true
+            }
+        });
+
+        if should_blink
+            && matches!(
+                self.resources.commands.try_send(OutputCommand::Blink),
+                Err(TrySendError::Full(_))
+            )
+        {
+            critical_section::with(|cs| {
+                *self.resources.blinking.borrow(cs).borrow_mut() = false;
+            });
+        }
     }
 
     fn set_active(&self, active: bool) {
-        let level = if active {
-            self.active_level
-        } else {
-            Self::inactive_level(self.active_level)
-        };
-        self.set_level(level);
+        critical_section::with(|cs| {
+            *self.resources.active.borrow(cs).borrow_mut() = active;
+        });
+        self.resources.active_changed.signal(());
     }
 }
