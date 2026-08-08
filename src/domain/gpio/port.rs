@@ -8,5 +8,5 @@ pub trait OutputDevice {
 }
 
 pub trait TemperatureSensor {
-    fn read_temperature(&self) -> f64;
+    fn read_temperature(&mut self) -> f64;
 }
