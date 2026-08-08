@@ -7,7 +7,7 @@ use super::pid::Pid;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 
-struct Heater {
+pub struct Heater {
     config_provider: Arc<dyn ConfigProvider>,
     cycle_start: Box<dyn Instant>,
     heating_element: Arc<dyn OutputDevice>,

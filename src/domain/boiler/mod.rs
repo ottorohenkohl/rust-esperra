@@ -1,3 +1,3 @@
 pub mod heater;
 
-mod pid;
+pub mod pid;
