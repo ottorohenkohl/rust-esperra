@@ -1,10 +1,7 @@
 use crate::domain::gpio::port::{InputDevice, OutputDevice};
 
-use core::cell::RefCell;
-use esp_hal::{
-    delay::Delay,
-    gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin, Pull},
-};
+use esp_hal::delay::Delay;
+use esp_hal::gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin, Pull};
 
 const BLINK_DURATION_MS: u32 = 250;
 
@@ -14,44 +11,52 @@ pub struct EspInputDevice<'d> {
 
 impl<'d> EspInputDevice<'d> {
     pub fn new(pin: impl InputPin + 'd, pull: Pull) -> Self {
-        Self {
-            pin: Input::new(pin, InputConfig::default().with_pull(pull)),
-        }
+        let pin = Input::new(pin, InputConfig::default().with_pull(pull));
+
+        Self { pin }
     }
 }
 
 impl InputDevice for EspInputDevice<'_> {
-    fn powered_state(&self) -> bool {
+    fn powered_state(&mut self) -> bool {
         self.pin.is_high()
     }
 }
 
 pub struct EspOutputDevice<'d> {
-    pin: RefCell<Output<'d>>,
+    pin: Output<'d>,
 }
 
 impl<'d> EspOutputDevice<'d> {
     pub fn new(pin: impl OutputPin + 'd) -> Self {
-        Self {
-            pin: RefCell::new(Output::new(pin, Level::Low, OutputConfig::default())),
+        let pin = Output::new(pin, Level::Low, OutputConfig::default());
+
+        Self { pin }
+    }
+
+    fn invert_state(&mut self) {
+        if self.pin.is_set_high() {
+            self.pin.set_low();
+        } else {
+            self.pin.set_high();
         }
     }
 }
 
 impl OutputDevice for EspOutputDevice<'_> {
-    fn blink_once(&self) {
-        let mut pin = self.pin.borrow_mut();
-        pin.set_high();
+    fn blink_once(&mut self) {
+        self.invert_state();
+
         Delay::new().delay_millis(BLINK_DURATION_MS);
-        pin.set_low();
+
+        self.invert_state();
     }
 
-    fn set_active(&self, active: bool) {
-        let mut pin = self.pin.borrow_mut();
+    fn set_active(&mut self, active: bool) {
         if active {
-            pin.set_high();
+            self.pin.set_high();
         } else {
-            pin.set_low();
+            self.pin.set_low();
         }
     }
 }
