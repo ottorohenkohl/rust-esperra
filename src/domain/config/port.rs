@@ -9,8 +9,6 @@ pub struct HeaterOptions {
     pub boost_intervall_size: f64,
 }
 
-
-
 pub struct PidGains {
     pub k_proportional: f64,
     pub k_intergral: f64,

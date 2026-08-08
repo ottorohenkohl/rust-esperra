@@ -13,10 +13,15 @@ Scaffolded with [`esp-generate`](https://github.com/esp-rs/esp-generate)
 
 ## What it does
 
-Blinks a "Hello world!" log message once a second over the S3's USB-Serial-JTAG output,
-using an `embassy` async task loop instead of a bare `loop {}`. It's meant as a starting
-point, not a real application — replace the body of `main` in `src/bin/main.rs` with
-your own logic.
+Provides the ESP32-S3 firmware foundation: an Embassy/`esp-rtos` async runtime and a
+hardware-independent domain layer. The runtime is the composition root: hardware adapters
+belong outside `src/domain`, while the domain depends only on its clock, configuration, and
+GPIO ports.
+
+The application loop currently yields for 100 seconds. Once adapters compose a `Heater`,
+that loop should call `heater.switch()` after each delay. Button interrupts can publish events
+to an Embassy task, and a future HTTP adapter can communicate with the domain through the same
+ports; neither needs to enter the domain layer.
 
 ## Developing
 
@@ -52,7 +57,7 @@ esptool.py --chip esp32s3 write_flash 0x0 firmware.bin
 ## CI
 
 `.gitlab-ci.yml` runs on every push:
-- `build:firmware` – uses Espressif's `espressif/idf-rust:esp32s3_latest` image, which
+- `build:firmware` – uses the pinned `espressif/idf-rust:esp32s3_1.88.0.0` image, which
   already ships the Xtensa Rust toolchain and `espflash` preinstalled. Sources
   `export-esp.sh`, then runs `cargo build --release` and merges the ELF into a flat
   `firmware.bin` via `espflash save-image --merge`, publishing it as an artifact.

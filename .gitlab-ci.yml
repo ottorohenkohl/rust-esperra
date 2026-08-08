@@ -1,5 +1,5 @@
 build:firmware:
-  image: espressif/idf-rust:esp32s3_latest
+  image: espressif/idf-rust:esp32s3_1.88.0.0
   before_script:
     - . "$HOME/export-esp.sh"
   script:
