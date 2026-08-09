@@ -3,6 +3,8 @@
 
 extern crate alloc;
 
+use alloc::sync::Arc;
+
 use core::panic::PanicInfo;
 
 use adapter::{
@@ -51,9 +53,9 @@ async fn main(_spawner: Spawner) -> ! {
     let boiler_ref = EmbassyActorRef::new(BOILER_MAILBOX.sender());
     let temperature_sensor_ref = EmbassyActorRef::new(SENSOR_MAILBOX.sender());
     let heating_element_ref = EmbassyActorRef::new(HEATING_ELEMENT_MAILBOX.sender());
-    let config = DefaultConfigPort::new();
+    let config = Arc::new(DefaultConfigPort::new());
     let mut boiler = BoilerActor::new(
-        &config,
+        config,
         temperature_sensor_ref,
         heating_element_ref,
         EmbassyInstant::now(),

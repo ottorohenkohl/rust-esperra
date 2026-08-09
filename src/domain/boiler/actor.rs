@@ -1,7 +1,9 @@
+use alloc::sync::Arc;
+
 use crate::{
     domain::{
         clock::Instant,
-        config::port::{ConfigPort, HeaterOptions},
+        config::port::ConfigPort,
         gpio::{output::OutputMessage, sensor::TemperatureSensorMessage},
     },
     library::actor::{Actor, ActorRef},
@@ -16,30 +18,24 @@ pub enum BoilerMessage {
     StopHeating,
 }
 
-pub struct BoilerActor<S, H, I> {
-    heater_options: HeaterOptions,
-    pid_service: PidService,
+pub struct BoilerActor<C, S, H, I> {
+    config: Arc<C>,
+    pid_service: PidService<C>,
     temperature_sensor: S,
     heating_element: H,
     cycle_start: I,
 }
 
-impl<S, H, I> BoilerActor<S, H, I>
+impl<C, S, H, I> BoilerActor<C, S, H, I>
 where
+    C: ConfigPort,
     I: Instant,
 {
-    pub fn new(
-        config: &impl ConfigPort,
-        temperature_sensor: S,
-        heating_element: H,
-        cycle_start: I,
-    ) -> Self {
-        let heater_options = *config.read_heater_options();
-        let pid_service =
-            PidService::new(*config.read_pid_gains(), heater_options.heating_cycle_ms);
+    pub fn new(config: Arc<C>, temperature_sensor: S, heating_element: H, cycle_start: I) -> Self {
+        let pid_service = PidService::new(Arc::clone(&config));
 
         Self {
-            heater_options,
+            config,
             pid_service,
             temperature_sensor,
             heating_element,
@@ -48,30 +44,29 @@ where
     }
 
     fn should_heat(&mut self, temperature: f64) -> bool {
+        let heater_options = *self.config.read_heater_options();
         let cycle_elapsed_ms = self.cycle_start.elapsed_ms();
-        if cycle_elapsed_ms >= self.heater_options.heating_cycle_ms {
+        if cycle_elapsed_ms >= heater_options.heating_cycle_ms {
             self.cycle_start.restart();
             return false;
         }
 
-        if temperature
-            < self.heater_options.target_temperature - self.heater_options.boost_intervall_size
-        {
+        if temperature < heater_options.target_temperature - heater_options.boost_intervall_size {
             return true;
         }
 
         let pid_percentage = self
             .pid_service
-            .compute(self.heater_options.target_temperature, temperature);
-        let heating_window_ms =
-            self.heater_options.heating_cycle_ms as f64 * pid_percentage / 100.0;
+            .compute(heater_options.target_temperature, temperature);
+        let heating_window_ms = heater_options.heating_cycle_ms as f64 * pid_percentage / 100.0;
 
         (cycle_elapsed_ms as f64) < heating_window_ms
     }
 }
 
-impl<S, H, I> Actor for BoilerActor<S, H, I>
+impl<C, S, H, I> Actor for BoilerActor<C, S, H, I>
 where
+    C: ConfigPort,
     S: ActorRef<TemperatureSensorMessage>,
     H: ActorRef<OutputMessage>,
     I: Instant,
