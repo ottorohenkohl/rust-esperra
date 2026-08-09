@@ -1,15 +1,15 @@
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
 use esperra_domain::{
     actor::Actor,
-    boiler::{BoilerActor, BoilerCommand},
+    boiler::{BoilerActor, BoilerMessage},
 };
 
 pub async fn run_boiler_actor<S, H, const N: usize>(
     actor: &mut BoilerActor<S, H>,
-    messages: Receiver<'_, CriticalSectionRawMutex, BoilerCommand, N>,
+    messages: Receiver<'_, CriticalSectionRawMutex, BoilerMessage, N>,
 ) -> !
 where
-    BoilerActor<S, H>: Actor<Message = BoilerCommand>,
+    BoilerActor<S, H>: Actor<Message = BoilerMessage>,
 {
     loop {
         actor.handle(messages.receive().await);

@@ -1,6 +1,6 @@
 use esperra_domain::{
     gpio::port::InputPort,
-    output::{OutputCommand, OutputState, StatusLightCommand},
+    output::{OutputMessage, OutputState, StatusLightMessage},
 };
 
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
@@ -14,18 +14,18 @@ pub struct LedActor;
 impl LedActor {
     pub async fn run<'d, const N: usize>(
         pin: impl OutputPin + 'd,
-        messages: Receiver<'_, CriticalSectionRawMutex, StatusLightCommand, N>,
+        messages: Receiver<'_, CriticalSectionRawMutex, StatusLightMessage, N>,
     ) -> ! {
         let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
 
         loop {
             match messages.receive().await {
-                StatusLightCommand::BlinkOnce => {
+                StatusLightMessage::BlinkOnce => {
                     pin.set_high();
                     Timer::after(BLINK_DURATION).await;
                     pin.set_low();
                 }
-                StatusLightCommand::Set(state) => set_output(&mut pin, state),
+                StatusLightMessage::Set(state) => set_output(&mut pin, state),
             }
         }
     }
@@ -36,12 +36,12 @@ pub struct HeatingElementActor;
 impl HeatingElementActor {
     pub async fn run<'d, const N: usize>(
         pin: impl OutputPin + 'd,
-        messages: Receiver<'_, CriticalSectionRawMutex, OutputCommand, N>,
+        messages: Receiver<'_, CriticalSectionRawMutex, OutputMessage, N>,
     ) -> ! {
         let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
 
         loop {
-            let OutputCommand::Set(state) = messages.receive().await;
+            let OutputMessage::Set(state) = messages.receive().await;
             set_output(&mut pin, state);
         }
     }

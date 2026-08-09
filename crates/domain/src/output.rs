@@ -5,12 +5,12 @@ pub enum OutputState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OutputCommand {
+pub enum OutputMessage {
     Set(OutputState),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum StatusLightCommand {
+pub enum StatusLightMessage {
     Set(OutputState),
     BlinkOnce,
 }

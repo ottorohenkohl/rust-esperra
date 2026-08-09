@@ -1,8 +1,4 @@
-use esperra_domain::{
-    actor::ActorRef,
-    boiler::BoilerCommand,
-    sensor::{TemperatureSensorCommand, TemperatureSensorEvent},
-};
+use esperra_domain::{actor::ActorRef, boiler::BoilerMessage, sensor::TemperatureSensorMessage};
 
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};
@@ -33,19 +29,19 @@ impl<'d> TemperatureSensorActor<'d> {
 
     pub async fn run<const N: usize, B>(
         &mut self,
-        messages: Receiver<'_, CriticalSectionRawMutex, TemperatureSensorCommand, N>,
+        messages: Receiver<'_, CriticalSectionRawMutex, TemperatureSensorMessage, N>,
         boiler: &B,
     ) -> !
     where
-        B: ActorRef<BoilerCommand>,
+        B: ActorRef<BoilerMessage>,
     {
         loop {
-            let TemperatureSensorCommand::Measure = messages.receive().await;
-            let event = match self.read_temperature().await {
-                Ok(temperature) => TemperatureSensorEvent::Measured(temperature),
-                Err(()) => TemperatureSensorEvent::MeasurementFailed,
+            let TemperatureSensorMessage::Measure = messages.receive().await;
+            let message = match self.read_temperature().await {
+                Ok(temperature) => BoilerMessage::TemperatureMeasured(temperature),
+                Err(()) => BoilerMessage::TemperatureMeasurementFailed,
             };
-            boiler.send(BoilerCommand::Temperature(event));
+            boiler.send(message);
         }
     }
 

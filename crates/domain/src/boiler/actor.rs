@@ -1,16 +1,17 @@
 use crate::{
     actor::{Actor, ActorRef},
     config::port::{HeaterOptions, PidGains},
-    output::{OutputCommand, OutputState},
-    sensor::{TemperatureSensorCommand, TemperatureSensorEvent},
+    output::{OutputMessage, OutputState},
+    sensor::TemperatureSensorMessage,
 };
 
 use super::pid::PidService;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum BoilerCommand {
+pub enum BoilerMessage {
     Tick { cycle_elapsed_ms: u64 },
-    Temperature(TemperatureSensorEvent),
+    TemperatureMeasured(f64),
+    TemperatureMeasurementFailed,
 }
 
 pub struct BoilerActor<S, H> {
@@ -56,30 +57,30 @@ impl<S, H> BoilerActor<S, H> {
 
 impl<S, H> Actor for BoilerActor<S, H>
 where
-    S: ActorRef<TemperatureSensorCommand>,
-    H: ActorRef<OutputCommand>,
+    S: ActorRef<TemperatureSensorMessage>,
+    H: ActorRef<OutputMessage>,
 {
-    type Message = BoilerCommand;
+    type Message = BoilerMessage;
 
     fn handle(&mut self, message: Self::Message) {
         match message {
-            BoilerCommand::Tick { cycle_elapsed_ms } => {
+            BoilerMessage::Tick { cycle_elapsed_ms } => {
                 self.cycle_elapsed_ms = cycle_elapsed_ms;
                 self.temperature_sensor
-                    .send(TemperatureSensorCommand::Measure);
+                    .send(TemperatureSensorMessage::Measure);
             }
-            BoilerCommand::Temperature(TemperatureSensorEvent::Measured(temperature)) => {
+            BoilerMessage::TemperatureMeasured(temperature) => {
                 let state = if self.should_heat(temperature) {
                     OutputState::Active
                 } else {
                     OutputState::Inactive
                 };
 
-                self.heating_element.send(OutputCommand::Set(state));
+                self.heating_element.send(OutputMessage::Set(state));
             }
-            BoilerCommand::Temperature(TemperatureSensorEvent::MeasurementFailed) => {
+            BoilerMessage::TemperatureMeasurementFailed => {
                 self.heating_element
-                    .send(OutputCommand::Set(OutputState::Inactive));
+                    .send(OutputMessage::Set(OutputState::Inactive));
             }
         }
     }
@@ -113,9 +114,9 @@ mod tests {
     }
 
     fn actor() -> (
-        BoilerActor<RecordingActorRef<TemperatureSensorCommand>, RecordingActorRef<OutputCommand>>,
-        RecordingActorRef<TemperatureSensorCommand>,
-        RecordingActorRef<OutputCommand>,
+        BoilerActor<RecordingActorRef<TemperatureSensorMessage>, RecordingActorRef<OutputMessage>>,
+        RecordingActorRef<TemperatureSensorMessage>,
+        RecordingActorRef<OutputMessage>,
     ) {
         let temperature_sensor = RecordingActorRef::new();
         let heating_element = RecordingActorRef::new();
@@ -141,13 +142,13 @@ mod tests {
     fn tick_requests_a_temperature_measurement() {
         let (mut actor, temperature_sensor, _) = actor();
 
-        actor.handle(BoilerCommand::Tick {
+        actor.handle(BoilerMessage::Tick {
             cycle_elapsed_ms: 10,
         });
 
         assert_eq!(
             *temperature_sensor.messages.borrow(),
-            [TemperatureSensorCommand::Measure]
+            [TemperatureSensorMessage::Measure]
         );
     }
 
@@ -155,13 +156,11 @@ mod tests {
     fn sensor_failure_switches_heater_off() {
         let (mut actor, _, heating_element) = actor();
 
-        actor.handle(BoilerCommand::Temperature(
-            TemperatureSensorEvent::MeasurementFailed,
-        ));
+        actor.handle(BoilerMessage::TemperatureMeasurementFailed);
 
         assert_eq!(
             *heating_element.messages.borrow(),
-            [OutputCommand::Set(OutputState::Inactive)]
+            [OutputMessage::Set(OutputState::Inactive)]
         );
     }
 
@@ -169,13 +168,11 @@ mod tests {
     fn low_temperature_switches_heater_on() {
         let (mut actor, _, heating_element) = actor();
 
-        actor.handle(BoilerCommand::Temperature(
-            TemperatureSensorEvent::Measured(50.0),
-        ));
+        actor.handle(BoilerMessage::TemperatureMeasured(50.0));
 
         assert_eq!(
             *heating_element.messages.borrow(),
-            [OutputCommand::Set(OutputState::Active)]
+            [OutputMessage::Set(OutputState::Active)]
         );
     }
 }
