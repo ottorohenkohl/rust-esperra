@@ -8,6 +8,38 @@ use esp_hal::peripherals::FLASH;
 const MAGIC_RECORD: u16 = 2307;
 const RECORD_SIZE: usize = 52;
 
+pub struct DefaultConfigPort {
+    heater_options: HeaterOptions,
+    pid_gains: PidGains,
+}
+
+impl DefaultConfigPort {
+    pub const fn new() -> Self {
+        Self {
+            heater_options: HeaterOptions {
+                heating_cycle_ms: 100_000,
+                target_temperature: 65.0,
+                boost_intervall_size: 5.0,
+            },
+            pid_gains: PidGains {
+                k_proportional: 1.0,
+                k_intergral: 0.0,
+                k_derivative: 0.0,
+            },
+        }
+    }
+}
+
+impl ConfigPort for DefaultConfigPort {
+    fn read_heater_options(&self) -> &HeaterOptions {
+        &self.heater_options
+    }
+
+    fn read_pid_gains(&self) -> &PidGains {
+        &self.pid_gains
+    }
+}
+
 pub struct FlashConfigPort<'d> {
     storage: FlashStorage<'d>,
 

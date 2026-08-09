@@ -7,11 +7,10 @@ use core::panic::PanicInfo;
 
 use adapter::{
     actor_ref::EmbassyActorRef, boiler::run_boiler_actor, clock::EmbassyInstant,
-    gpio::HeatingElementActor, sensor::TemperatureSensorActor,
+    config::DefaultConfigPort, gpio::HeatingElementActor, sensor::TemperatureSensorActor,
 };
 use domain::{
     boiler::{BoilerActor, BoilerMessage},
-    config::port::{HeaterOptions, PidGains},
     gpio::{output::OutputMessage, sensor::TemperatureSensorMessage},
 };
 use embassy_executor::Spawner;
@@ -28,16 +27,6 @@ mod domain;
 mod library;
 
 const BOILER_INTERVAL: Duration = Duration::from_secs(1);
-const DEFAULT_HEATER_OPTIONS: HeaterOptions = HeaterOptions {
-    heating_cycle_ms: 100_000,
-    target_temperature: 65.0,
-    boost_intervall_size: 5.0,
-};
-const DEFAULT_PID_GAINS: PidGains = PidGains {
-    k_proportional: 1.0,
-    k_intergral: 0.0,
-    k_derivative: 0.0,
-};
 
 static BOILER_MAILBOX: Channel<CriticalSectionRawMutex, BoilerMessage, 4> = Channel::new();
 static SENSOR_MAILBOX: Channel<CriticalSectionRawMutex, TemperatureSensorMessage, 1> =
@@ -62,9 +51,9 @@ async fn main(_spawner: Spawner) -> ! {
     let boiler_ref = EmbassyActorRef::new(BOILER_MAILBOX.sender());
     let temperature_sensor_ref = EmbassyActorRef::new(SENSOR_MAILBOX.sender());
     let heating_element_ref = EmbassyActorRef::new(HEATING_ELEMENT_MAILBOX.sender());
+    let config = DefaultConfigPort::new();
     let mut boiler = BoilerActor::new(
-        DEFAULT_HEATER_OPTIONS,
-        DEFAULT_PID_GAINS,
+        &config,
         temperature_sensor_ref,
         heating_element_ref,
         EmbassyInstant::now(),

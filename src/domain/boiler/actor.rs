@@ -1,7 +1,7 @@
 use crate::{
     domain::{
         clock::Instant,
-        config::port::{HeaterOptions, PidGains},
+        config::port::{ConfigPort, HeaterOptions},
         gpio::{output::OutputMessage, sensor::TemperatureSensorMessage},
     },
     library::actor::{Actor, ActorRef},
@@ -29,15 +29,18 @@ where
     I: Instant,
 {
     pub fn new(
-        heater_options: HeaterOptions,
-        pid_gains: PidGains,
+        config: &impl ConfigPort,
         temperature_sensor: S,
         heating_element: H,
         cycle_start: I,
     ) -> Self {
+        let heater_options = *config.read_heater_options();
+        let pid_service =
+            PidService::new(*config.read_pid_gains(), heater_options.heating_cycle_ms);
+
         Self {
             heater_options,
-            pid_service: PidService::new(pid_gains, heater_options.heating_cycle_ms),
+            pid_service,
             temperature_sensor,
             heating_element,
             cycle_start,
