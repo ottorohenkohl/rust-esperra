@@ -1,4 +1,7 @@
-use crate::domain::{gpio::port::InputDevice, output::OutputMessage};
+use esperra_domain::{
+    gpio::port::InputDevice,
+    output::{OutputCommand, OutputState, StatusLightCommand},
+};
 
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};
@@ -9,30 +12,20 @@ const BLINK_DURATION: Duration = Duration::from_millis(250);
 pub struct LedActor;
 
 impl LedActor {
-    pub async fn run<'d>(
+    pub async fn run<'d, const N: usize>(
         pin: impl OutputPin + 'd,
-        messages: Receiver<'_, CriticalSectionRawMutex, OutputMessage, 1>,
+        messages: Receiver<'_, CriticalSectionRawMutex, StatusLightCommand, N>,
     ) -> ! {
         let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
-        let mut blinking = false;
 
         loop {
             match messages.receive().await {
-                OutputMessage::BlinkOnce if !blinking => {
-                    blinking = true;
+                StatusLightCommand::BlinkOnce => {
                     pin.set_high();
                     Timer::after(BLINK_DURATION).await;
                     pin.set_low();
-                    blinking = false;
                 }
-                OutputMessage::SetActive(active) => {
-                    if active {
-                        pin.set_high();
-                    } else {
-                        pin.set_low();
-                    }
-                }
-                OutputMessage::BlinkOnce => {}
+                StatusLightCommand::Set(state) => set_output(&mut pin, state),
             }
         }
     }
@@ -41,24 +34,23 @@ impl LedActor {
 pub struct HeatingElementActor;
 
 impl HeatingElementActor {
-    pub async fn run<'d>(
+    pub async fn run<'d, const N: usize>(
         pin: impl OutputPin + 'd,
-        messages: Receiver<'_, CriticalSectionRawMutex, OutputMessage, 1>,
+        messages: Receiver<'_, CriticalSectionRawMutex, OutputCommand, N>,
     ) -> ! {
         let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
 
         loop {
-            match messages.receive().await {
-                OutputMessage::SetActive(active) => {
-                    if active {
-                        pin.set_high();
-                    } else {
-                        pin.set_low();
-                    }
-                }
-                OutputMessage::BlinkOnce => {}
-            }
+            let OutputCommand::Set(state) = messages.receive().await;
+            set_output(&mut pin, state);
         }
+    }
+}
+
+fn set_output(pin: &mut Output<'_>, state: OutputState) {
+    match state {
+        OutputState::Active => pin.set_high(),
+        OutputState::Inactive => pin.set_low(),
     }
 }
 

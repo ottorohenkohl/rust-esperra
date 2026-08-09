@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ConfigProvider, HeaterOptions, PidGains};
+use esperra_domain::config::port::{ConfigProvider, HeaterOptions, PidGains};
 
 use embedded_storage::{ReadStorage, Storage};
 use esp_storage::{FlashStorage, FlashStorageError};

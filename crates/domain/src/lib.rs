@@ -1,3 +1,5 @@
+#![no_std]
+
 pub mod actor;
 pub mod boiler;
 pub mod config;

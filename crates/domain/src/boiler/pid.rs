@@ -1,4 +1,4 @@
-use crate::domain::config::port::PidGains;
+use crate::config::port::PidGains;
 
 pub struct PidService {
     pid_gains: PidGains,

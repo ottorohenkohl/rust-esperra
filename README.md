@@ -14,14 +14,16 @@ Scaffolded with [`esp-generate`](https://github.com/esp-rs/esp-generate)
 ## What it does
 
 Provides the ESP32-S3 firmware foundation: an Embassy/`esp-rtos` async runtime and a
-hardware-independent domain layer. The runtime is the composition root: hardware adapters
-belong outside `src/domain`, while the domain depends only on its clock, configuration, and
-GPIO ports.
+library-free actor domain in `crates/domain`. Domain actors are synchronous state machines:
+they consume typed commands and return typed effects. Their protocols, business state, and
+handlers have no dependency on Embassy, ESP HAL, channels, async executors, or mailbox errors.
 
-The application loop currently yields for 100 seconds. Once adapters compose a `Heater`,
-that loop should call `heater.switch()` after each delay. Button interrupts can publish events
-to an Embassy task, and a future HTTP adapter can communicate with the domain through the same
-ports; neither needs to enter the domain layer.
+`src/adapter` interprets those effects using Embassy channels and implements the hardware
+actors with ESP HAL. Channel capacities, backpressure, task lifecycles, timers, and hardware
+failures therefore stay at the adapter boundary. `src/main.rs` is the composition root.
+
+The application loop currently yields for 100 seconds. The actors and adapters are not wired
+into the composition root yet.
 
 ## Developing
 

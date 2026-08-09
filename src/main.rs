@@ -10,7 +10,6 @@ use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::timer::timg::TimerGroup;
 
 mod adapter;
-mod domain;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
