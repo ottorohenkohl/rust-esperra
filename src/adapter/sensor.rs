@@ -9,7 +9,7 @@ use esp_hal::{
     delay::Delay,
     gpio::{DriveMode, Flex, OutputConfig, Pin},
 };
-use onewire::{DS18B20, Device, OneWire};
+use onewire::{DS18B20, DeviceSearch, OneWire};
 
 pub struct TemperatureSensorActor<'d> {
     bus: OneWire<Flex<'d>>,
@@ -17,17 +17,22 @@ pub struct TemperatureSensorActor<'d> {
 }
 
 impl<'d> TemperatureSensorActor<'d> {
-    pub fn new(pin: impl Pin + 'd, address: [u8; 8]) -> Self {
+    pub fn new(pin: impl Pin + 'd) -> Result<Self, ()> {
         let mut pin = Flex::new(pin);
         pin.apply_output_config(&OutputConfig::default().with_drive_mode(DriveMode::OpenDrain));
         pin.set_input_enable(true);
         pin.set_output_enable(true);
         pin.set_high();
 
-        Self {
-            bus: OneWire::new(pin, false),
-            sensor: DS18B20::new(Device { address }).unwrap(),
-        }
+        let mut bus = OneWire::new(pin, false);
+        let mut delay = Delay::new();
+        let device = bus
+            .search_next(&mut DeviceSearch::new_for_family(0x28), &mut delay)
+            .map_err(|_| ())?
+            .ok_or(())?;
+        let sensor = DS18B20::new(device).map_err(|_| ())?;
+
+        Ok(Self { bus, sensor })
     }
 
     pub async fn run<const N: usize, B>(

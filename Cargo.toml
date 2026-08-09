@@ -10,6 +10,7 @@ path = "./src/main.rs"
 
 [dependencies]
 embassy-executor        = { version = "0.10.0", features = ["log"] }
+embassy-futures         = "0.1.2"
 embassy-sync            = "0.8.0"
 embassy-time            = { version = "0.5.0", features = ["log"] }
 esp-bootloader-esp-idf  = { version = "0.5.0", features = ["esp32s3", "log-04"] }
