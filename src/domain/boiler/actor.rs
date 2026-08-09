@@ -1,7 +1,8 @@
 use crate::{
-    config::port::{HeaterOptions, PidGains},
-    gpio::output::OutputMessage,
-    gpio::sensor::TemperatureSensorMessage,
+    domain::{
+        config::port::{HeaterOptions, PidGains},
+        gpio::{output::OutputMessage, sensor::TemperatureSensorMessage},
+    },
     library::actor::{Actor, ActorRef},
 };
 
