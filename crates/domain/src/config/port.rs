@@ -1,4 +1,4 @@
-pub trait ConfigProvider {
+pub trait ConfigPort {
     fn read_heater_options(&self) -> &HeaterOptions;
     fn read_pid_gains(&self) -> &PidGains;
 }

@@ -1,4 +1,4 @@
-use esperra_domain::config::port::{ConfigProvider, HeaterOptions, PidGains};
+use esperra_domain::config::port::{ConfigPort, HeaterOptions, PidGains};
 
 use embedded_storage::{ReadStorage, Storage};
 use esp_storage::{FlashStorage, FlashStorageError};
@@ -8,7 +8,7 @@ use esp_hal::peripherals::FLASH;
 const MAGIC_RECORD: u16 = 2307;
 const RECORD_SIZE: usize = 52;
 
-pub struct FlashConfigProvider<'d> {
+pub struct FlashConfigPort<'d> {
     storage: FlashStorage<'d>,
 
     heater_options: HeaterOptions,
@@ -16,7 +16,7 @@ pub struct FlashConfigProvider<'d> {
     storage_offset: u32,
 }
 
-impl<'d> FlashConfigProvider<'d> {
+impl<'d> FlashConfigPort<'d> {
     pub fn new(flash: FLASH<'d>, storage_offset: u32) -> Result<Self, FlashStorageError> {
         let mut storage = FlashStorage::new(flash);
 
@@ -108,7 +108,7 @@ impl<'d> FlashConfigProvider<'d> {
     }
 }
 
-impl ConfigProvider for FlashConfigProvider<'_> {
+impl ConfigPort for FlashConfigPort<'_> {
     fn read_heater_options(&self) -> &HeaterOptions {
         &self.heater_options
     }

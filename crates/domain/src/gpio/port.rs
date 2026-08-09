@@ -1,3 +1,3 @@
-pub trait InputDevice {
+pub trait InputPort {
     fn powered_state(&mut self) -> bool;
 }

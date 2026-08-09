@@ -1,6 +1,11 @@
+use core::future::Future;
+
+pub trait ActorRef<Message> {
+    fn send(&self, message: Message) -> impl Future<Output = ()>;
+}
+
 pub trait Actor {
     type Message;
-    type Effect;
 
-    fn handle(&mut self, message: Self::Message) -> Self::Effect;
+    fn handle(&mut self, message: Self::Message) -> impl Future<Output = ()>;
 }

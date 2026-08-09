@@ -1,5 +1,5 @@
 use esperra_domain::{
-    gpio::port::InputDevice,
+    gpio::port::InputPort,
     output::{OutputCommand, OutputState, StatusLightCommand},
 };
 
@@ -54,11 +54,11 @@ fn set_output(pin: &mut Output<'_>, state: OutputState) {
     }
 }
 
-pub struct EspInputDevice<'d> {
+pub struct EspInputPort<'d> {
     pin: Input<'d>,
 }
 
-impl<'d> EspInputDevice<'d> {
+impl<'d> EspInputPort<'d> {
     pub fn new(pin: impl InputPin + 'd, pull: Pull) -> Self {
         Self {
             pin: Input::new(pin, InputConfig::default().with_pull(pull)),
@@ -66,7 +66,7 @@ impl<'d> EspInputDevice<'d> {
     }
 }
 
-impl InputDevice for EspInputDevice<'_> {
+impl InputPort for EspInputPort<'_> {
     fn powered_state(&mut self) -> bool {
         self.pin.is_high()
     }

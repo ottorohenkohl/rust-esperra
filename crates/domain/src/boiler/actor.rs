@@ -1,5 +1,5 @@
 use crate::{
-    actor::Actor,
+    actor::{Actor, ActorRef},
     config::port::{HeaterOptions, PidGains},
     output::{OutputCommand, OutputState},
     sensor::{TemperatureSensorCommand, TemperatureSensorEvent},
@@ -13,23 +13,26 @@ pub enum BoilerCommand {
     Temperature(TemperatureSensorEvent),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BoilerEffect {
-    MeasureTemperature(TemperatureSensorCommand),
-    ControlHeatingElement(OutputCommand),
-}
-
-pub struct BoilerActor {
+pub struct BoilerActor<S, H> {
     heater_options: HeaterOptions,
     pid_service: PidService,
+    temperature_sensor: S,
+    heating_element: H,
     cycle_elapsed_ms: u64,
 }
 
-impl BoilerActor {
-    pub fn new(heater_options: HeaterOptions, pid_gains: PidGains) -> Self {
+impl<S, H> BoilerActor<S, H> {
+    pub fn new(
+        heater_options: HeaterOptions,
+        pid_gains: PidGains,
+        temperature_sensor: S,
+        heating_element: H,
+    ) -> Self {
         Self {
             heater_options,
             pid_service: PidService::new(pid_gains, heater_options.heating_cycle_ms),
+            temperature_sensor,
+            heating_element,
             cycle_elapsed_ms: 0,
         }
     }
@@ -51,15 +54,20 @@ impl BoilerActor {
     }
 }
 
-impl Actor for BoilerActor {
+impl<S, H> Actor for BoilerActor<S, H>
+where
+    S: ActorRef<TemperatureSensorCommand>,
+    H: ActorRef<OutputCommand>,
+{
     type Message = BoilerCommand;
-    type Effect = BoilerEffect;
 
-    fn handle(&mut self, message: Self::Message) -> Self::Effect {
+    async fn handle(&mut self, message: Self::Message) {
         match message {
             BoilerCommand::Tick { cycle_elapsed_ms } => {
                 self.cycle_elapsed_ms = cycle_elapsed_ms;
-                BoilerEffect::MeasureTemperature(TemperatureSensorCommand::Measure)
+                self.temperature_sensor
+                    .send(TemperatureSensorCommand::Measure)
+                    .await;
             }
             BoilerCommand::Temperature(TemperatureSensorEvent::Measured(temperature)) => {
                 let state = if self.should_heat(temperature) {
@@ -68,10 +76,12 @@ impl Actor for BoilerActor {
                     OutputState::Inactive
                 };
 
-                BoilerEffect::ControlHeatingElement(OutputCommand::Set(state))
+                self.heating_element.send(OutputCommand::Set(state)).await;
             }
             BoilerCommand::Temperature(TemperatureSensorEvent::MeasurementFailed) => {
-                BoilerEffect::ControlHeatingElement(OutputCommand::Set(OutputState::Inactive))
+                self.heating_element
+                    .send(OutputCommand::Set(OutputState::Inactive))
+                    .await;
             }
         }
     }
@@ -79,10 +89,62 @@ impl Actor for BoilerActor {
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
+    extern crate std;
+
+    use alloc::{rc::Rc, sync::Arc, vec::Vec};
+    use core::{
+        cell::RefCell,
+        future::Future,
+        pin::pin,
+        task::{Context, Poll, Waker},
+    };
+
     use super::*;
 
-    fn actor() -> BoilerActor {
-        BoilerActor::new(
+    struct NoopWake;
+
+    impl std::task::Wake for NoopWake {
+        fn wake(self: Arc<Self>) {}
+    }
+
+    fn block_on(future: impl Future<Output = ()>) {
+        let waker = Waker::from(Arc::new(NoopWake));
+        let mut context = Context::from_waker(&waker);
+        let mut future = pin!(future);
+
+        while future.as_mut().poll(&mut context) == Poll::Pending {
+            std::thread::yield_now();
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingActorRef<Message> {
+        messages: Rc<RefCell<Vec<Message>>>,
+    }
+
+    impl<Message> RecordingActorRef<Message> {
+        fn new() -> Self {
+            Self {
+                messages: Rc::new(RefCell::new(Vec::new())),
+            }
+        }
+    }
+
+    impl<Message> ActorRef<Message> for RecordingActorRef<Message> {
+        async fn send(&self, message: Message) {
+            self.messages.borrow_mut().push(message);
+        }
+    }
+
+    fn actor() -> (
+        BoilerActor<RecordingActorRef<TemperatureSensorCommand>, RecordingActorRef<OutputCommand>>,
+        RecordingActorRef<TemperatureSensorCommand>,
+        RecordingActorRef<OutputCommand>,
+    ) {
+        let temperature_sensor = RecordingActorRef::new();
+        let heating_element = RecordingActorRef::new();
+        let actor = BoilerActor::new(
             HeaterOptions {
                 heating_cycle_ms: 100_000,
                 target_temperature: 65.0,
@@ -93,36 +155,52 @@ mod tests {
                 k_intergral: 0.0,
                 k_derivative: 0.0,
             },
-        )
+            temperature_sensor.clone(),
+            heating_element.clone(),
+        );
+
+        (actor, temperature_sensor, heating_element)
     }
 
     #[test]
     fn tick_requests_a_temperature_measurement() {
+        let (mut actor, temperature_sensor, _) = actor();
+
+        block_on(actor.handle(BoilerCommand::Tick {
+            cycle_elapsed_ms: 10,
+        }));
+
         assert_eq!(
-            actor().handle(BoilerCommand::Tick {
-                cycle_elapsed_ms: 10,
-            }),
-            BoilerEffect::MeasureTemperature(TemperatureSensorCommand::Measure)
+            *temperature_sensor.messages.borrow(),
+            [TemperatureSensorCommand::Measure]
         );
     }
 
     #[test]
     fn sensor_failure_switches_heater_off() {
+        let (mut actor, _, heating_element) = actor();
+
+        block_on(actor.handle(BoilerCommand::Temperature(
+            TemperatureSensorEvent::MeasurementFailed,
+        )));
+
         assert_eq!(
-            actor().handle(BoilerCommand::Temperature(
-                TemperatureSensorEvent::MeasurementFailed,
-            )),
-            BoilerEffect::ControlHeatingElement(OutputCommand::Set(OutputState::Inactive))
+            *heating_element.messages.borrow(),
+            [OutputCommand::Set(OutputState::Inactive)]
         );
     }
 
     #[test]
     fn low_temperature_switches_heater_on() {
+        let (mut actor, _, heating_element) = actor();
+
+        block_on(actor.handle(BoilerCommand::Temperature(
+            TemperatureSensorEvent::Measured(50.0),
+        )));
+
         assert_eq!(
-            actor().handle(BoilerCommand::Temperature(
-                TemperatureSensorEvent::Measured(50.0),
-            )),
-            BoilerEffect::ControlHeatingElement(OutputCommand::Set(OutputState::Active))
+            *heating_element.messages.borrow(),
+            [OutputCommand::Set(OutputState::Active)]
         );
     }
 }

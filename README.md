@@ -14,13 +14,15 @@ Scaffolded with [`esp-generate`](https://github.com/esp-rs/esp-generate)
 ## What it does
 
 Provides the ESP32-S3 firmware foundation: an Embassy/`esp-rtos` async runtime and a
-library-free actor domain in `crates/domain`. Domain actors are synchronous state machines:
-they consume typed commands and return typed effects. Their protocols, business state, and
-handlers have no dependency on Embassy, ESP HAL, channels, async executors, or mailbox errors.
+library-free actor domain in `crates/domain`. Domain actors own typed `ActorRef`s, consume
+typed protocol messages, and send protocol messages to other actors directly. The actor
+interfaces, protocols, business state, and handlers have no dependency on Embassy, ESP HAL,
+channels, executors, or Embassy error types.
 
-`src/adapter` interprets those effects using Embassy channels and implements the hardware
-actors with ESP HAL. Channel capacities, backpressure, task lifecycles, timers, and hardware
-failures therefore stay at the adapter boundary. `src/main.rs` is the composition root.
+`src/adapter` implements the domain's `ActorRef` with Embassy channels and implements the
+hardware actors with ESP HAL. Channel capacities, backpressure, task lifecycles, timers, and
+hardware failures therefore stay at the adapter boundary, while actor collaboration remains
+domain logic. `src/main.rs` is the composition root.
 
 The application loop currently yields for 100 seconds. The actors and adapters are not wired
 into the composition root yet.
