@@ -1,16 +1,10 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OutputState {
-    Inactive,
-    Active,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OutputMessage {
-    SetState(OutputState),
+    SetActive(bool),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum StatusLightMessage {
-    SetState(OutputState),
+pub enum LightMessage {
+    SetActive(bool),
     BlinkOnce,
 }

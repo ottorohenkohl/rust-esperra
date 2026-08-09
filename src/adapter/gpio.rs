@@ -1,6 +1,6 @@
 use esperra_domain::{
     gpio::port::InputPort,
-    output::{OutputMessage, OutputState, StatusLightMessage},
+    output::{LightMessage, OutputMessage},
 };
 
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
@@ -9,23 +9,23 @@ use esp_hal::gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, O
 
 const BLINK_DURATION: Duration = Duration::from_millis(250);
 
-pub struct LedActor;
+pub struct LightActor;
 
-impl LedActor {
+impl LightActor {
     pub async fn run<'d, const N: usize>(
         pin: impl OutputPin + 'd,
-        messages: Receiver<'_, CriticalSectionRawMutex, StatusLightMessage, N>,
+        messages: Receiver<'_, CriticalSectionRawMutex, LightMessage, N>,
     ) -> ! {
         let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
 
         loop {
             match messages.receive().await {
-                StatusLightMessage::BlinkOnce => {
+                LightMessage::BlinkOnce => {
                     pin.set_high();
                     Timer::after(BLINK_DURATION).await;
                     pin.set_low();
                 }
-                StatusLightMessage::SetState(state) => set_output(&mut pin, state),
+                LightMessage::SetActive(active) => set_output(&mut pin, active),
             }
         }
     }
@@ -41,16 +41,17 @@ impl HeatingElementActor {
         let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
 
         loop {
-            let OutputMessage::SetState(state) = messages.receive().await;
-            set_output(&mut pin, state);
+            let OutputMessage::SetActive(active) = messages.receive().await;
+            set_output(&mut pin, active);
         }
     }
 }
 
-fn set_output(pin: &mut Output<'_>, state: OutputState) {
-    match state {
-        OutputState::Active => pin.set_high(),
-        OutputState::Inactive => pin.set_low(),
+fn set_output(pin: &mut Output<'_>, active: bool) {
+    if active {
+        pin.set_high();
+    } else {
+        pin.set_low();
     }
 }
 

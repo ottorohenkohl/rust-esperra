@@ -1,7 +1,7 @@
 use crate::{
     actor::{Actor, ActorRef},
     config::port::{HeaterOptions, PidGains},
-    output::{OutputMessage, OutputState},
+    output::OutputMessage,
     sensor::TemperatureSensorMessage,
 };
 
@@ -72,17 +72,12 @@ where
             BoilerMessage::RegulateHeating {
                 measured_temperature,
             } => {
-                let state = if self.should_heat(measured_temperature) {
-                    OutputState::Active
-                } else {
-                    OutputState::Inactive
-                };
+                let active = self.should_heat(measured_temperature);
 
-                self.heating_element.send(OutputMessage::SetState(state));
+                self.heating_element.send(OutputMessage::SetActive(active));
             }
             BoilerMessage::StopHeating => {
-                self.heating_element
-                    .send(OutputMessage::SetState(OutputState::Inactive));
+                self.heating_element.send(OutputMessage::SetActive(false));
             }
         }
     }
@@ -162,7 +157,7 @@ mod tests {
 
         assert_eq!(
             *heating_element.messages.borrow(),
-            [OutputMessage::SetState(OutputState::Inactive)]
+            [OutputMessage::SetActive(false)]
         );
     }
 
@@ -176,7 +171,7 @@ mod tests {
 
         assert_eq!(
             *heating_element.messages.borrow(),
-            [OutputMessage::SetState(OutputState::Active)]
+            [OutputMessage::SetActive(true)]
         );
     }
 }
