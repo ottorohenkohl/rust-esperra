@@ -9,7 +9,6 @@ name = "esperra"
 path = "./src/main.rs"
 
 [dependencies]
-esperra-domain         = { path = "crates/domain" }
 embassy-executor        = { version = "0.10.0", features = ["log"] }
 embassy-sync            = "0.8.0"
 embassy-time            = { version = "0.5.0", features = ["log"] }

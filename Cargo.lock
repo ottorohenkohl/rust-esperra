@@ -880,13 +880,8 @@ dependencies = [
  "esp-println",
  "esp-rtos",
  "esp-storage",
- "esperra-domain",
  "onewire",
 ]
-
-[[package]]
-name = "esperra-domain"
-version = "0.1.0"
 
 [[package]]
 name = "find-msvc-tools"

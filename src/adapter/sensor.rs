@@ -1,4 +1,7 @@
-use esperra_domain::{actor::ActorRef, boiler::BoilerMessage, sensor::TemperatureSensorMessage};
+use crate::{
+    domain::{boiler::BoilerMessage, gpio::sensor::TemperatureSensorMessage},
+    library::actor::ActorRef,
+};
 
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};

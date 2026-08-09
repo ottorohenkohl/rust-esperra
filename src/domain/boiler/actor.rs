@@ -1,8 +1,8 @@
 use crate::{
-    actor::{Actor, ActorRef},
     config::port::{HeaterOptions, PidGains},
-    output::OutputMessage,
-    sensor::TemperatureSensorMessage,
+    gpio::output::OutputMessage,
+    gpio::sensor::TemperatureSensorMessage,
+    library::actor::{Actor, ActorRef},
 };
 
 use super::pid::PidService;

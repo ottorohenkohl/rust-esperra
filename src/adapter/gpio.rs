@@ -1,6 +1,6 @@
-use esperra_domain::{
+use crate::domain::{
+    gpio::output::{LightMessage, OutputMessage},
     gpio::port::InputPort,
-    output::{LightMessage, OutputMessage},
 };
 
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};

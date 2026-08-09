@@ -1,5 +1,5 @@
+use crate::library::actor::ActorRef;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Sender};
-use esperra_domain::actor::ActorRef;
 
 pub struct EmbassyActorRef<'a, Message, const N: usize> {
     sender: Sender<'a, CriticalSectionRawMutex, Message, N>,
