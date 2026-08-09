@@ -3,6 +3,8 @@
 
 extern crate alloc;
 
+use core::panic::PanicInfo;
+
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
@@ -14,7 +16,7 @@ mod adapter;
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
-async fn main(spawner: Spawner) -> ! {
+async fn main(_spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
     esp_alloc::heap_allocator!(size: 64 * 1024);
 
@@ -28,5 +30,12 @@ async fn main(spawner: Spawner) -> ! {
 
     loop {
         Timer::after(Duration::from_secs(100)).await;
+    }
+}
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {
+        core::hint::spin_loop();
     }
 }
