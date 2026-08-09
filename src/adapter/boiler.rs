@@ -12,6 +12,6 @@ where
     BoilerActor<S, H>: Actor<Message = BoilerCommand>,
 {
     loop {
-        actor.handle(messages.receive().await).await;
+        actor.handle(messages.receive().await);
     }
 }

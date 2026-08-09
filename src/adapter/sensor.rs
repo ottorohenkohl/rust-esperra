@@ -45,7 +45,7 @@ impl<'d> TemperatureSensorActor<'d> {
                 Ok(temperature) => TemperatureSensorEvent::Measured(temperature),
                 Err(()) => TemperatureSensorEvent::MeasurementFailed,
             };
-            boiler.send(BoilerCommand::Temperature(event)).await;
+            boiler.send(BoilerCommand::Temperature(event));
         }
     }
 

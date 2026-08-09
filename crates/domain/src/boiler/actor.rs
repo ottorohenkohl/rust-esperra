@@ -61,13 +61,12 @@ where
 {
     type Message = BoilerCommand;
 
-    async fn handle(&mut self, message: Self::Message) {
+    fn handle(&mut self, message: Self::Message) {
         match message {
             BoilerCommand::Tick { cycle_elapsed_ms } => {
                 self.cycle_elapsed_ms = cycle_elapsed_ms;
                 self.temperature_sensor
-                    .send(TemperatureSensorCommand::Measure)
-                    .await;
+                    .send(TemperatureSensorCommand::Measure);
             }
             BoilerCommand::Temperature(TemperatureSensorEvent::Measured(temperature)) => {
                 let state = if self.should_heat(temperature) {
@@ -76,12 +75,11 @@ where
                     OutputState::Inactive
                 };
 
-                self.heating_element.send(OutputCommand::Set(state)).await;
+                self.heating_element.send(OutputCommand::Set(state));
             }
             BoilerCommand::Temperature(TemperatureSensorEvent::MeasurementFailed) => {
                 self.heating_element
-                    .send(OutputCommand::Set(OutputState::Inactive))
-                    .await;
+                    .send(OutputCommand::Set(OutputState::Inactive));
             }
         }
     }
@@ -90,33 +88,10 @@ where
 #[cfg(test)]
 mod tests {
     extern crate alloc;
-    extern crate std;
-
-    use alloc::{rc::Rc, sync::Arc, vec::Vec};
-    use core::{
-        cell::RefCell,
-        future::Future,
-        pin::pin,
-        task::{Context, Poll, Waker},
-    };
+    use alloc::{rc::Rc, vec::Vec};
+    use core::cell::RefCell;
 
     use super::*;
-
-    struct NoopWake;
-
-    impl std::task::Wake for NoopWake {
-        fn wake(self: Arc<Self>) {}
-    }
-
-    fn block_on(future: impl Future<Output = ()>) {
-        let waker = Waker::from(Arc::new(NoopWake));
-        let mut context = Context::from_waker(&waker);
-        let mut future = pin!(future);
-
-        while future.as_mut().poll(&mut context) == Poll::Pending {
-            std::thread::yield_now();
-        }
-    }
 
     #[derive(Clone)]
     struct RecordingActorRef<Message> {
@@ -132,7 +107,7 @@ mod tests {
     }
 
     impl<Message> ActorRef<Message> for RecordingActorRef<Message> {
-        async fn send(&self, message: Message) {
+        fn send(&self, message: Message) {
             self.messages.borrow_mut().push(message);
         }
     }
@@ -166,9 +141,9 @@ mod tests {
     fn tick_requests_a_temperature_measurement() {
         let (mut actor, temperature_sensor, _) = actor();
 
-        block_on(actor.handle(BoilerCommand::Tick {
+        actor.handle(BoilerCommand::Tick {
             cycle_elapsed_ms: 10,
-        }));
+        });
 
         assert_eq!(
             *temperature_sensor.messages.borrow(),
@@ -180,9 +155,9 @@ mod tests {
     fn sensor_failure_switches_heater_off() {
         let (mut actor, _, heating_element) = actor();
 
-        block_on(actor.handle(BoilerCommand::Temperature(
+        actor.handle(BoilerCommand::Temperature(
             TemperatureSensorEvent::MeasurementFailed,
-        )));
+        ));
 
         assert_eq!(
             *heating_element.messages.borrow(),
@@ -194,9 +169,9 @@ mod tests {
     fn low_temperature_switches_heater_on() {
         let (mut actor, _, heating_element) = actor();
 
-        block_on(actor.handle(BoilerCommand::Temperature(
+        actor.handle(BoilerCommand::Temperature(
             TemperatureSensorEvent::Measured(50.0),
-        )));
+        ));
 
         assert_eq!(
             *heating_element.messages.borrow(),

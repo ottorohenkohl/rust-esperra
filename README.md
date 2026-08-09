@@ -15,9 +15,9 @@ Scaffolded with [`esp-generate`](https://github.com/esp-rs/esp-generate)
 
 Provides the ESP32-S3 firmware foundation: an Embassy/`esp-rtos` async runtime and a
 library-free actor domain in `crates/domain`. Domain actors own typed `ActorRef`s, consume
-typed protocol messages, and send protocol messages to other actors directly. The actor
-interfaces, protocols, business state, and handlers have no dependency on Embassy, ESP HAL,
-channels, executors, or Embassy error types.
+typed protocol messages synchronously, and enqueue messages to other actors without awaiting
+the recipient. The actor interfaces, protocols, business state, and handlers have no
+dependency on Embassy, ESP HAL, channels, executors, or Embassy error types.
 
 `src/adapter` implements the domain's `ActorRef` with Embassy channels and implements the
 hardware actors with ESP HAL. Channel capacities, backpressure, task lifecycles, timers, and

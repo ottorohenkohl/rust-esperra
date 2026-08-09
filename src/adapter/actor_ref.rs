@@ -12,7 +12,7 @@ impl<'a, Message, const N: usize> EmbassyActorRef<'a, Message, N> {
 }
 
 impl<Message, const N: usize> ActorRef<Message> for EmbassyActorRef<'_, Message, N> {
-    async fn send(&self, message: Message) {
-        self.sender.send(message).await;
+    fn send(&self, message: Message) {
+        let _ = self.sender.try_send(message);
     }
 }
