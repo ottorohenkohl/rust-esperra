@@ -41,10 +41,19 @@ impl<'d> FlashConfigProvider<'d> {
             };
         }
 
-        Ok(Self { storage, storage_offset, heater_options, pid_gains })
+        Ok(Self {
+            storage,
+            storage_offset,
+            heater_options,
+            pid_gains,
+        })
     }
 
-    pub fn save(&mut self, heater_options: HeaterOptions, pid_gains: PidGains) -> Result<(), FlashStorageError> {
+    pub fn save(
+        &mut self,
+        heater_options: HeaterOptions,
+        pid_gains: PidGains,
+    ) -> Result<(), FlashStorageError> {
         let record = Self::encode(heater_options, pid_gains);
 
         self.storage.write(self.storage_offset, &record)?;
@@ -83,11 +92,19 @@ impl<'d> FlashConfigProvider<'d> {
     }
 
     fn default_heater_options() -> HeaterOptions {
-        HeaterOptions { heating_cycle_ms: 100_000, target_temperature: 65.0, boost_intervall_size: 5.0 }
+        HeaterOptions {
+            heating_cycle_ms: 100_000,
+            target_temperature: 65.0,
+            boost_intervall_size: 5.0,
+        }
     }
 
     fn default_pid_gains() -> PidGains {
-        PidGains { k_proportional: 1.0, k_intergral: 0.0, k_derivative: 0.0 }
+        PidGains {
+            k_proportional: 1.0,
+            k_intergral: 0.0,
+            k_derivative: 0.0,
+        }
     }
 }
 

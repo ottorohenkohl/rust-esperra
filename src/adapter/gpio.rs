@@ -1,100 +1,107 @@
-use crate::domain::gpio::port::{
-    InputDevice, OutputDevice, TemperatureSensor, TemperatureSensorError,
-};
+use crate::domain::gpio::port::InputDevice;
 
-use esp_hal::delay::Delay;
+use core::cell::RefCell;
+use critical_section::Mutex;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use embassy_time::{Duration, Timer};
 use esp_hal::gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin, Pull};
-use onewire::{DS18B20, Device, OneWire};
 
-const BLINK_DURATION_MS: u32 = 250;
+const BLINK_DURATION: Duration = Duration::from_millis(250);
 
-pub struct Ds18b20Sensor<'d> {
-    bus: OneWire<esp_hal::gpio::Flex<'d>>,
-    sensor: DS18B20,
+enum LedCommand {
+    Blink,
 }
 
-impl<'d> Ds18b20Sensor<'d> {
-    pub fn new(pin: impl esp_hal::gpio::Pin + 'd, address: [u8; 8]) -> Self {
-        let mut pin = esp_hal::gpio::Flex::new(pin);
-        pin.apply_output_config(&OutputConfig::default().with_drive_mode(esp_hal::gpio::DriveMode::OpenDrain));
-        pin.set_input_enable(true);
-        pin.set_output_enable(true);
-        pin.set_high();
+pub struct LedActorResources {
+    commands: Channel<CriticalSectionRawMutex, LedCommand, 1>,
+    blinking: Mutex<RefCell<bool>>,
+}
 
+impl LedActorResources {
+    pub const fn new() -> Self {
         Self {
-            bus: OneWire::new(pin, false),
-            sensor: DS18B20::new(Device { address }).unwrap(),
+            commands: Channel::new(),
+            blinking: Mutex::new(RefCell::new(false)),
         }
     }
 }
 
-impl TemperatureSensor for Ds18b20Sensor<'_> {
-    fn read_temperature(&mut self) -> Result<f64, TemperatureSensorError> {
-        let mut delay = Delay::new();
-        let raw_temperature = self
-            .sensor
-            .measure_temperature(&mut self.bus, &mut delay)
-            .and_then(|resolution| {
-                delay.delay_millis(resolution.time_ms() as u32);
-                self.sensor.read_temperature(&mut self.bus, &mut delay)
-            })
-            .map_err(|_| TemperatureSensorError::ReadFailed)?;
+pub struct LedActor {
+    resources: &'static LedActorResources,
+}
 
-        Ok(raw_temperature as i16 as f64 / 16.0)
+impl LedActor {
+    pub const fn new(resources: &'static LedActorResources) -> Self {
+        Self { resources }
+    }
+
+    pub fn blink_once(&self) {
+        let should_blink = critical_section::with(|cs| {
+            let mut blinking = self.resources.blinking.borrow(cs).borrow_mut();
+            if *blinking {
+                false
+            } else {
+                *blinking = true;
+                true
+            }
+        });
+
+        if should_blink && self.resources.commands.try_send(LedCommand::Blink).is_err() {
+            critical_section::with(|cs| {
+                *self.resources.blinking.borrow(cs).borrow_mut() = false;
+            });
+        }
+    }
+
+    pub async fn run<'d>(&self, pin: impl OutputPin + 'd) -> ! {
+        let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
+
+        loop {
+            let LedCommand::Blink = self.resources.commands.receive().await;
+            pin.set_high();
+            Timer::after(BLINK_DURATION).await;
+            pin.set_low();
+            critical_section::with(|cs| {
+                *self.resources.blinking.borrow(cs).borrow_mut() = false;
+            });
+        }
     }
 }
+
+pub struct HeatingElement<'d> {
+    pin: Output<'d>,
+}
+
+impl<'d> HeatingElement<'d> {
+    pub fn new(pin: impl OutputPin + 'd) -> Self {
+        Self {
+            pin: Output::new(pin, Level::Low, OutputConfig::default()),
+        }
+    }
+
+    pub fn set_active(&mut self, active: bool) {
+        if active {
+            self.pin.set_high();
+        } else {
+            self.pin.set_low();
+        }
+    }
+}
+
 pub struct EspInputDevice<'d> {
     pin: Input<'d>,
 }
 
 impl<'d> EspInputDevice<'d> {
     pub fn new(pin: impl InputPin + 'd, pull: Pull) -> Self {
-        let pin = Input::new(pin, InputConfig::default().with_pull(pull));
-
-        Self { pin }
+        Self {
+            pin: Input::new(pin, InputConfig::default().with_pull(pull)),
+        }
     }
 }
 
 impl InputDevice for EspInputDevice<'_> {
     fn powered_state(&mut self) -> bool {
         self.pin.is_high()
-    }
-}
-
-pub struct EspOutputDevice<'d> {
-    pin: Output<'d>,
-}
-
-impl<'d> EspOutputDevice<'d> {
-    pub fn new(pin: impl OutputPin + 'd) -> Self {
-        let pin = Output::new(pin, Level::Low, OutputConfig::default());
-
-        Self { pin }
-    }
-
-    fn invert_state(&mut self) {
-        if self.pin.is_set_high() {
-            self.pin.set_low();
-        } else {
-            self.pin.set_high();
-        }
-    }
-}
-
-impl OutputDevice for EspOutputDevice<'_> {
-    fn blink_once(&mut self) {
-        self.invert_state();
-
-        Delay::new().delay_millis(BLINK_DURATION_MS);
-
-        self.invert_state();
-    }
-
-    fn set_active(&mut self, active: bool) {
-        if active {
-            self.pin.set_high();
-        } else {
-            self.pin.set_low();
-        }
     }
 }
