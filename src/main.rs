@@ -22,7 +22,10 @@ async fn main(spawner: Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    esp_rtos::start(TimerGroup::new(peripherals.TIMG0).timer0, SoftwareInterruptControl::new(peripherals.SW_INTERRUPT).software_interrupt0);
+    esp_rtos::start(
+        TimerGroup::new(peripherals.TIMG0).timer0,
+        SoftwareInterruptControl::new(peripherals.SW_INTERRUPT).software_interrupt0,
+    );
 
     loop {
         Timer::after(Duration::from_secs(100)).await;

@@ -1,89 +1,63 @@
-use crate::domain::gpio::port::InputDevice;
+use crate::domain::{gpio::port::InputDevice, output::OutputMessage};
 
-use core::cell::RefCell;
-use critical_section::Mutex;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};
 use esp_hal::gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin, Pull};
 
 const BLINK_DURATION: Duration = Duration::from_millis(250);
 
-enum LedCommand {
-    Blink,
-}
-
-pub struct LedActorResources {
-    commands: Channel<CriticalSectionRawMutex, LedCommand, 1>,
-    blinking: Mutex<RefCell<bool>>,
-}
-
-impl LedActorResources {
-    pub const fn new() -> Self {
-        Self {
-            commands: Channel::new(),
-            blinking: Mutex::new(RefCell::new(false)),
-        }
-    }
-}
-
-pub struct LedActor {
-    resources: &'static LedActorResources,
-}
+pub struct LedActor;
 
 impl LedActor {
-    pub const fn new(resources: &'static LedActorResources) -> Self {
-        Self { resources }
-    }
+    pub async fn run<'d>(
+        pin: impl OutputPin + 'd,
+        messages: Receiver<'_, CriticalSectionRawMutex, OutputMessage, 1>,
+    ) -> ! {
+        let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
+        let mut blinking = false;
 
-    pub fn blink_once(&self) {
-        let should_blink = critical_section::with(|cs| {
-            let mut blinking = self.resources.blinking.borrow(cs).borrow_mut();
-            if *blinking {
-                false
-            } else {
-                *blinking = true;
-                true
+        loop {
+            match messages.receive().await {
+                OutputMessage::BlinkOnce if !blinking => {
+                    blinking = true;
+                    pin.set_high();
+                    Timer::after(BLINK_DURATION).await;
+                    pin.set_low();
+                    blinking = false;
+                }
+                OutputMessage::SetActive(active) => {
+                    if active {
+                        pin.set_high();
+                    } else {
+                        pin.set_low();
+                    }
+                }
+                OutputMessage::BlinkOnce => {}
             }
-        });
-
-        if should_blink && self.resources.commands.try_send(LedCommand::Blink).is_err() {
-            critical_section::with(|cs| {
-                *self.resources.blinking.borrow(cs).borrow_mut() = false;
-            });
         }
     }
+}
 
-    pub async fn run<'d>(&self, pin: impl OutputPin + 'd) -> ! {
+pub struct HeatingElementActor;
+
+impl HeatingElementActor {
+    pub async fn run<'d>(
+        pin: impl OutputPin + 'd,
+        messages: Receiver<'_, CriticalSectionRawMutex, OutputMessage, 1>,
+    ) -> ! {
         let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
 
         loop {
-            let LedCommand::Blink = self.resources.commands.receive().await;
-            pin.set_high();
-            Timer::after(BLINK_DURATION).await;
-            pin.set_low();
-            critical_section::with(|cs| {
-                *self.resources.blinking.borrow(cs).borrow_mut() = false;
-            });
-        }
-    }
-}
-
-pub struct HeatingElement<'d> {
-    pin: Output<'d>,
-}
-
-impl<'d> HeatingElement<'d> {
-    pub fn new(pin: impl OutputPin + 'd) -> Self {
-        Self {
-            pin: Output::new(pin, Level::Low, OutputConfig::default()),
-        }
-    }
-
-    pub fn set_active(&mut self, active: bool) {
-        if active {
-            self.pin.set_high();
-        } else {
-            self.pin.set_low();
+            match messages.receive().await {
+                OutputMessage::SetActive(active) => {
+                    if active {
+                        pin.set_high();
+                    } else {
+                        pin.set_low();
+                    }
+                }
+                OutputMessage::BlinkOnce => {}
+            }
         }
     }
 }

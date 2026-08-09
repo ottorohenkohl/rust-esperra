@@ -1,9 +1,10 @@
-use crate::domain::boiler::actor::{BoilerEvent, TemperatureReadError};
-
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    channel::{Channel, Receiver, Sender},
+use crate::domain::{
+    actor::ActorRef,
+    boiler::{BoilerMessage, TemperatureReadError},
+    sensor::TemperatureSensorMessage,
 };
+
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};
 use esp_hal::{
     delay::Delay,
@@ -11,20 +12,17 @@ use esp_hal::{
 };
 use onewire::{DS18B20, Device, OneWire};
 
-pub enum TemperatureSensorCommand {
-    ReadTemperature,
-}
-
-pub type TemperatureSensorCommandChannel =
-    Channel<CriticalSectionRawMutex, TemperatureSensorCommand, 1>;
-
-pub struct TemperatureSensorActor<'d> {
+pub struct TemperatureSensorActor<'d, B> {
     bus: OneWire<Flex<'d>>,
     sensor: DS18B20,
+    boiler: B,
 }
 
-impl<'d> TemperatureSensorActor<'d> {
-    pub fn new(pin: impl Pin + 'd, address: [u8; 8]) -> Self {
+impl<'d, B> TemperatureSensorActor<'d, B>
+where
+    B: ActorRef<BoilerMessage>,
+{
+    pub fn new(pin: impl Pin + 'd, address: [u8; 8], boiler: B) -> Self {
         let mut pin = Flex::new(pin);
         pin.apply_output_config(&OutputConfig::default().with_drive_mode(DriveMode::OpenDrain));
         pin.set_input_enable(true);
@@ -34,19 +32,19 @@ impl<'d> TemperatureSensorActor<'d> {
         Self {
             bus: OneWire::new(pin, false),
             sensor: DS18B20::new(Device { address }).unwrap(),
+            boiler,
         }
     }
 
     pub async fn run(
         &mut self,
-        commands: Receiver<'_, CriticalSectionRawMutex, TemperatureSensorCommand, 1>,
-        boiler_events: Sender<'_, CriticalSectionRawMutex, BoilerEvent, 4>,
+        messages: Receiver<'_, CriticalSectionRawMutex, TemperatureSensorMessage, 1>,
     ) -> ! {
         loop {
-            let TemperatureSensorCommand::ReadTemperature = commands.receive().await;
-            boiler_events
-                .send(BoilerEvent::TemperatureRead(self.read_temperature().await))
-                .await;
+            let TemperatureSensorMessage::Measure = messages.receive().await;
+            let _ = self.boiler.try_send(BoilerMessage::TemperatureMeasured(
+                self.read_temperature().await,
+            ));
         }
     }
 

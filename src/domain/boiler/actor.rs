@@ -1,46 +1,68 @@
-use crate::domain::config::port::{HeaterOptions, PidGains};
+use crate::domain::{
+    actor::ActorRef,
+    config::port::{HeaterOptions, PidGains},
+    output::OutputMessage,
+    sensor::TemperatureSensorMessage,
+};
 
 use super::pid::PidService;
 
-pub enum BoilerEvent {
+pub enum BoilerMessage {
     Tick { cycle_elapsed_ms: u64 },
-    TemperatureRead(Result<f64, TemperatureReadError>),
+    TemperatureMeasured(Result<f64, TemperatureReadError>),
 }
 
 pub enum TemperatureReadError {
     ReadFailed,
 }
 
-pub enum BoilerEffect {
-    ReadTemperature,
-    SetHeating(bool),
-}
-
-pub struct BoilerActor {
+pub struct BoilerActor<S, H> {
     heater_options: HeaterOptions,
     pid_service: PidService,
+    temperature_sensor: S,
+    heating_element: H,
     cycle_elapsed_ms: u64,
 }
 
-impl BoilerActor {
-    pub fn new(heater_options: HeaterOptions, pid_gains: PidGains) -> Self {
+impl<S, H> BoilerActor<S, H>
+where
+    S: ActorRef<TemperatureSensorMessage>,
+    H: ActorRef<OutputMessage>,
+{
+    pub fn new(
+        heater_options: HeaterOptions,
+        pid_gains: PidGains,
+        temperature_sensor: S,
+        heating_element: H,
+    ) -> Self {
         Self {
             heater_options,
             pid_service: PidService::new(pid_gains, heater_options.heating_cycle_ms),
+            temperature_sensor,
+            heating_element,
             cycle_elapsed_ms: 0,
         }
     }
 
-    pub fn handle(&mut self, event: BoilerEvent) -> BoilerEffect {
-        match event {
-            BoilerEvent::Tick { cycle_elapsed_ms } => {
+    pub fn handle(&mut self, message: BoilerMessage) {
+        match message {
+            BoilerMessage::Tick { cycle_elapsed_ms } => {
                 self.cycle_elapsed_ms = cycle_elapsed_ms;
-                BoilerEffect::ReadTemperature
+                let _ = self
+                    .temperature_sensor
+                    .try_send(TemperatureSensorMessage::Measure);
             }
-            BoilerEvent::TemperatureRead(Ok(temperature)) => {
-                BoilerEffect::SetHeating(self.should_heat(temperature))
+            BoilerMessage::TemperatureMeasured(Ok(temperature)) => {
+                let active = self.should_heat(temperature);
+                let _ = self
+                    .heating_element
+                    .try_send(OutputMessage::SetActive(active));
             }
-            BoilerEvent::TemperatureRead(Err(_)) => BoilerEffect::SetHeating(false),
+            BoilerMessage::TemperatureMeasured(Err(_)) => {
+                let _ = self
+                    .heating_element
+                    .try_send(OutputMessage::SetActive(false));
+            }
         }
     }
 

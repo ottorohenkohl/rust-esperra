@@ -1,30 +1,16 @@
-use crate::{
-    adapter::{gpio::HeatingElement, sensor::TemperatureSensorCommand},
-    domain::boiler::actor::{BoilerActor, BoilerEffect, BoilerEvent},
-};
+use crate::domain::boiler::{BoilerActor, BoilerMessage};
 
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    channel::{Channel, Receiver, Sender},
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
 
-pub async fn run_boiler_actor<'d>(
-    actor: &mut BoilerActor,
-    events: Receiver<'_, CriticalSectionRawMutex, BoilerEvent, 4>,
-    sensor_commands: Sender<'_, CriticalSectionRawMutex, TemperatureSensorCommand, 1>,
-    heating_element: &mut HeatingElement<'d>,
-) -> ! {
+pub async fn run_boiler_actor<S, H>(
+    actor: &mut BoilerActor<S, H>,
+    messages: Receiver<'_, CriticalSectionRawMutex, BoilerMessage, 4>,
+) -> !
+where
+    S: crate::domain::actor::ActorRef<crate::domain::sensor::TemperatureSensorMessage>,
+    H: crate::domain::actor::ActorRef<crate::domain::output::OutputMessage>,
+{
     loop {
-        let effect = actor.handle(events.receive().await);
-        match effect {
-            BoilerEffect::ReadTemperature => {
-                sensor_commands
-                    .send(TemperatureSensorCommand::ReadTemperature)
-                    .await;
-            }
-            BoilerEffect::SetHeating(active) => heating_element.set_active(active),
-        }
+        actor.handle(messages.receive().await);
     }
 }
-
-pub type BoilerEventChannel = Channel<CriticalSectionRawMutex, BoilerEvent, 4>;
