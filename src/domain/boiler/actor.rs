@@ -24,7 +24,10 @@ pub struct BoilerActor<S, H, I> {
     cycle_start: I,
 }
 
-impl<S, H, I> BoilerActor<S, H, I> {
+impl<S, H, I> BoilerActor<S, H, I>
+where
+    I: Instant,
+{
     pub fn new(
         heater_options: HeaterOptions,
         pid_gains: PidGains,
