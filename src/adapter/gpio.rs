@@ -25,7 +25,7 @@ impl LedActor {
                     Timer::after(BLINK_DURATION).await;
                     pin.set_low();
                 }
-                StatusLightMessage::Set(state) => set_output(&mut pin, state),
+                StatusLightMessage::SetState(state) => set_output(&mut pin, state),
             }
         }
     }
@@ -41,7 +41,7 @@ impl HeatingElementActor {
         let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
 
         loop {
-            let OutputMessage::Set(state) = messages.receive().await;
+            let OutputMessage::SetState(state) = messages.receive().await;
             set_output(&mut pin, state);
         }
     }

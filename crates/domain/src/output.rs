@@ -6,11 +6,11 @@ pub enum OutputState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OutputMessage {
-    Set(OutputState),
+    SetState(OutputState),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StatusLightMessage {
-    Set(OutputState),
+    SetState(OutputState),
     BlinkOnce,
 }

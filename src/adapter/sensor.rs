@@ -36,10 +36,12 @@ impl<'d> TemperatureSensorActor<'d> {
         B: ActorRef<BoilerMessage>,
     {
         loop {
-            let TemperatureSensorMessage::Measure = messages.receive().await;
+            let TemperatureSensorMessage::MeasureTemperature = messages.receive().await;
             let message = match self.read_temperature().await {
-                Ok(temperature) => BoilerMessage::TemperatureMeasured(temperature),
-                Err(()) => BoilerMessage::TemperatureMeasurementFailed,
+                Ok(temperature) => BoilerMessage::RegulateHeating {
+                    measured_temperature: temperature,
+                },
+                Err(()) => BoilerMessage::StopHeating,
             };
             boiler.send(message);
         }

@@ -9,9 +9,9 @@ use super::pid::PidService;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BoilerMessage {
-    Tick { cycle_elapsed_ms: u64 },
-    TemperatureMeasured(f64),
-    TemperatureMeasurementFailed,
+    EvaluateHeating { cycle_elapsed_ms: u64 },
+    RegulateHeating { measured_temperature: f64 },
+    StopHeating,
 }
 
 pub struct BoilerActor<S, H> {
@@ -64,23 +64,25 @@ where
 
     fn handle(&mut self, message: Self::Message) {
         match message {
-            BoilerMessage::Tick { cycle_elapsed_ms } => {
+            BoilerMessage::EvaluateHeating { cycle_elapsed_ms } => {
                 self.cycle_elapsed_ms = cycle_elapsed_ms;
                 self.temperature_sensor
-                    .send(TemperatureSensorMessage::Measure);
+                    .send(TemperatureSensorMessage::MeasureTemperature);
             }
-            BoilerMessage::TemperatureMeasured(temperature) => {
-                let state = if self.should_heat(temperature) {
+            BoilerMessage::RegulateHeating {
+                measured_temperature,
+            } => {
+                let state = if self.should_heat(measured_temperature) {
                     OutputState::Active
                 } else {
                     OutputState::Inactive
                 };
 
-                self.heating_element.send(OutputMessage::Set(state));
+                self.heating_element.send(OutputMessage::SetState(state));
             }
-            BoilerMessage::TemperatureMeasurementFailed => {
+            BoilerMessage::StopHeating => {
                 self.heating_element
-                    .send(OutputMessage::Set(OutputState::Inactive));
+                    .send(OutputMessage::SetState(OutputState::Inactive));
             }
         }
     }
@@ -139,40 +141,42 @@ mod tests {
     }
 
     #[test]
-    fn tick_requests_a_temperature_measurement() {
+    fn evaluating_heating_requests_a_temperature_measurement() {
         let (mut actor, temperature_sensor, _) = actor();
 
-        actor.handle(BoilerMessage::Tick {
+        actor.handle(BoilerMessage::EvaluateHeating {
             cycle_elapsed_ms: 10,
         });
 
         assert_eq!(
             *temperature_sensor.messages.borrow(),
-            [TemperatureSensorMessage::Measure]
+            [TemperatureSensorMessage::MeasureTemperature]
         );
     }
 
     #[test]
-    fn sensor_failure_switches_heater_off() {
+    fn stopping_heating_switches_heater_off() {
         let (mut actor, _, heating_element) = actor();
 
-        actor.handle(BoilerMessage::TemperatureMeasurementFailed);
+        actor.handle(BoilerMessage::StopHeating);
 
         assert_eq!(
             *heating_element.messages.borrow(),
-            [OutputMessage::Set(OutputState::Inactive)]
+            [OutputMessage::SetState(OutputState::Inactive)]
         );
     }
 
     #[test]
-    fn low_temperature_switches_heater_on() {
+    fn regulating_for_low_temperature_switches_heater_on() {
         let (mut actor, _, heating_element) = actor();
 
-        actor.handle(BoilerMessage::TemperatureMeasured(50.0));
+        actor.handle(BoilerMessage::RegulateHeating {
+            measured_temperature: 50.0,
+        });
 
         assert_eq!(
             *heating_element.messages.borrow(),
-            [OutputMessage::Set(OutputState::Active)]
+            [OutputMessage::SetState(OutputState::Active)]
         );
     }
 }
