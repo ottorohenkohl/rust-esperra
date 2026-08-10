@@ -54,7 +54,10 @@ impl Actor for BoilerActor {
     async fn handle(&mut self, message: Self::Message) {
         match message {
             BoilerMessage::EvaluateHeating => self.temperature_sensor.tell(TemperatureSensorMessage::MeasureTemperature),
-            BoilerMessage::RegulateHeating { measured_temperature } => self.heating_element.tell(OutputMessage::SetActive(self.should_heat(measured_temperature))),
+            BoilerMessage::RegulateHeating { measured_temperature } => {
+                let active = self.should_heat(measured_temperature);
+                self.heating_element.tell(OutputMessage::SetActive(active));
+            }
             BoilerMessage::StopHeating => self.heating_element.tell(OutputMessage::SetActive(false)),
         }
     }
