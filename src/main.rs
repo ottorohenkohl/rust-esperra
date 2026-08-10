@@ -3,7 +3,6 @@
 
 extern crate alloc;
 
-use adapter::clock::EmbassyInstant;
 use adapter::config::DefaultConfigPort;
 use adapter::gpio::HeatingElementActor;
 use adapter::sensor::TemperatureSensorActor;
@@ -49,8 +48,8 @@ async fn main(_spawner: Spawner) -> ! {
     let boiler_ref = BOILER_MAILBOX.actor_ref();
     let temperature_sensor_ref = SENSOR_MAILBOX.actor_ref();
     let heating_element_ref = HEATING_ELEMENT_MAILBOX.actor_ref();
-    let config = Arc::new(DefaultConfigPort::new());
-    let boiler = BoilerActor::new(config, temperature_sensor_ref, heating_element_ref, EmbassyInstant::now());
+    let config: Arc<dyn domain::config::port::ConfigPort> = Arc::new(DefaultConfigPort::new());
+    let boiler = BoilerActor::new(config, temperature_sensor_ref, heating_element_ref);
     let temperature_sensor = TemperatureSensorActor::new(peripherals.GPIO4, boiler_ref.clone()).unwrap();
     let heating_element = HeatingElementActor::new(peripherals.GPIO5);
 

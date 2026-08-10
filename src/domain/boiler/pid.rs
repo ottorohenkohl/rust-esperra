@@ -1,18 +1,14 @@
+use crate::domain::config::port::ConfigPort;
 use alloc::sync::Arc;
 
-use crate::domain::config::port::ConfigPort;
-
-pub struct PidService<C> {
-    config: Arc<C>,
+pub struct PidService {
+    config: Arc<dyn ConfigPort>,
     last_temperature: f64,
     stored_integral: f64,
 }
 
-impl<C> PidService<C>
-where
-    C: ConfigPort,
-{
-    pub fn new(config: Arc<C>) -> Self {
+impl PidService {
+    pub fn new(config: Arc<dyn ConfigPort>) -> Self {
         Self { config, last_temperature: 0.0, stored_integral: 0.0 }
     }
 
