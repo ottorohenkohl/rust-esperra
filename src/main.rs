@@ -51,7 +51,7 @@ async fn main(_spawner: Spawner) -> ! {
     let config: Arc<dyn domain::config::port::ConfigPort> = Arc::new(DefaultConfigPort::new());
     let boiler = BoilerActor::new(config, temperature_sensor_ref, heating_element_ref);
     let mut temperature_sensor = TemperatureSensorActor::new(peripherals.GPIO4).unwrap();
-    temperature_sensor.subscribe(boiler_ref.subscriber()).unwrap();
+    assert!(temperature_sensor.subscribe(boiler_ref.subscriber()).is_ok());
     let heating_element = HeatingElementActor::new(peripherals.GPIO5);
 
     join3(BOILER_MAILBOX.run(boiler), SENSOR_MAILBOX.run(temperature_sensor), join(HEATING_ELEMENT_MAILBOX.run(heating_element), evaluate_boiler(&boiler_ref))).await;
