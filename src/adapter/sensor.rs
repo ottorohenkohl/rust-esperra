@@ -1,5 +1,6 @@
 use crate::domain::boiler::BoilerMessage;
 use crate::domain::gpio::sensor::TemperatureSensorMessage;
+use crate::library::actor::Actor;
 use crate::library::actor::ActorRef;
 use embassy_time::Duration;
 use embassy_time::Timer;
