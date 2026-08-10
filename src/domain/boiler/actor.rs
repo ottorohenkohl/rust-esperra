@@ -1,5 +1,6 @@
 use crate::domain::config::port::ConfigPort;
 use crate::domain::gpio::output::OutputMessage;
+use crate::domain::gpio::sensor::TemperatureReading;
 use crate::domain::gpio::sensor::TemperatureSensorMessage;
 use crate::library::actor::Actor;
 use crate::library::actor::ActorRef;
@@ -13,6 +14,15 @@ pub enum BoilerMessage {
     EvaluateHeating,
     RegulateHeating { measured_temperature: f64 },
     StopHeating,
+}
+
+impl From<TemperatureReading> for BoilerMessage {
+    fn from(reading: TemperatureReading) -> Self {
+        match reading {
+            TemperatureReading::Measured(measured_temperature) => Self::RegulateHeating { measured_temperature },
+            TemperatureReading::MeasurementFailed => Self::StopHeating,
+        }
+    }
 }
 
 pub struct BoilerActor {
