@@ -2,6 +2,7 @@ use crate::domain::gpio::output::LightMessage;
 use crate::domain::gpio::output::OutputMessage;
 use crate::domain::gpio::port::InputPort;
 use crate::library::actor::Actor;
+use crate::library::actor::AsyncActor;
 use embassy_time::Duration;
 use embassy_time::Timer;
 use esp_hal::gpio::Input;
@@ -25,13 +26,17 @@ impl<'d> LightActor<'d> {
     }
 }
 
-impl Actor for LightActor<'_> {
+impl AsyncActor for LightActor<'_> {
     type Message = LightMessage;
 
-    fn handle(&mut self, message: Self::Message) {
+    async fn handle(&mut self, message: Self::Message) {
         match message {
             LightMessage::SetActive(active) => set_output(&mut self.pin, active),
-            LightMessage::BlinkOnce => {}
+            LightMessage::BlinkOnce => {
+                self.pin.set_high();
+                Timer::after(BLINK_DURATION).await;
+                self.pin.set_low();
+            }
         }
     }
 }
