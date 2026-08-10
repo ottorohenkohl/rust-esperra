@@ -2,7 +2,6 @@ use crate::domain::gpio::output::LightMessage;
 use crate::domain::gpio::output::OutputMessage;
 use crate::domain::gpio::port::InputPort;
 use crate::library::actor::Actor;
-use crate::library::actor::AsyncActor;
 use embassy_time::Duration;
 use embassy_time::Timer;
 use esp_hal::gpio::Input;
@@ -26,7 +25,7 @@ impl<'d> LightActor<'d> {
     }
 }
 
-impl AsyncActor for LightActor<'_> {
+impl Actor for LightActor<'_> {
     type Message = LightMessage;
 
     async fn handle(&mut self, message: Self::Message) {
@@ -54,7 +53,7 @@ impl<'d> HeatingElementActor<'d> {
 impl Actor for HeatingElementActor<'_> {
     type Message = OutputMessage;
 
-    fn handle(&mut self, message: Self::Message) {
+    async fn handle(&mut self, message: Self::Message) {
         let OutputMessage::SetActive(active) = message;
         set_output(&mut self.pin, active);
     }

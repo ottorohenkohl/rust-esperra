@@ -1,7 +1,6 @@
 use crate::domain::boiler::BoilerMessage;
 use crate::domain::gpio::sensor::TemperatureSensorMessage;
 use crate::library::actor::ActorRef;
-use crate::library::actor::AsyncActor;
 use embassy_time::Duration;
 use embassy_time::Timer;
 use esp_hal::delay::Delay;
@@ -47,7 +46,7 @@ impl<'d> TemperatureSensorActor<'d> {
     }
 }
 
-impl AsyncActor for TemperatureSensorActor<'_> {
+impl Actor for TemperatureSensorActor<'_> {
     type Message = TemperatureSensorMessage;
 
     async fn handle(&mut self, message: Self::Message) {

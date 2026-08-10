@@ -5,12 +5,6 @@ use embassy_sync::channel::DynamicSender;
 pub trait Actor {
     type Message;
 
-    fn handle(&mut self, message: Self::Message);
-}
-
-pub trait AsyncActor {
-    type Message;
-
     async fn handle(&mut self, message: Self::Message);
 }
 
@@ -46,15 +40,6 @@ impl<Message: 'static, const CAPACITY: usize> Mailbox<Message, CAPACITY> {
     pub async fn run<A>(&'static self, mut actor: A) -> !
     where
         A: Actor<Message = Message>,
-    {
-        loop {
-            actor.handle(self.channel.receive().await);
-        }
-    }
-
-    pub async fn run_async<A>(&'static self, mut actor: A) -> !
-    where
-        A: AsyncActor<Message = Message>,
     {
         loop {
             actor.handle(self.channel.receive().await).await;

@@ -54,7 +54,7 @@ async fn main(_spawner: Spawner) -> ! {
     let temperature_sensor = TemperatureSensorActor::new(peripherals.GPIO4, boiler_ref.clone()).unwrap();
     let heating_element = HeatingElementActor::new(peripherals.GPIO5);
 
-    join3(BOILER_MAILBOX.run(boiler), SENSOR_MAILBOX.run_async(temperature_sensor), join(HEATING_ELEMENT_MAILBOX.run(heating_element), evaluate_boiler(&boiler_ref))).await;
+    join3(BOILER_MAILBOX.run(boiler), SENSOR_MAILBOX.run(temperature_sensor), join(HEATING_ELEMENT_MAILBOX.run(heating_element), evaluate_boiler(&boiler_ref))).await;
 
     unreachable!()
 }

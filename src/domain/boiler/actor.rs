@@ -60,7 +60,7 @@ where
 {
     type Message = BoilerMessage;
 
-    fn handle(&mut self, message: Self::Message) {
+    async fn handle(&mut self, message: Self::Message) {
         match message {
             BoilerMessage::EvaluateHeating => {
                 self.temperature_sensor.tell(TemperatureSensorMessage::MeasureTemperature);
