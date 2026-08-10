@@ -13,11 +13,7 @@ where
     C: ConfigPort,
 {
     pub fn new(config: Arc<C>) -> Self {
-        Self {
-            config,
-            last_temperature: 0.0,
-            stored_integral: 0.0,
-        }
+        Self { config, last_temperature: 0.0, stored_integral: 0.0 }
     }
 
     pub fn compute(&mut self, target_temperature: f64, actual_temperature: f64) -> f64 {
@@ -29,8 +25,7 @@ where
 
         let proportional = pid_gains.k_proportional * temperature_error;
         let derivative = pid_gains.k_derivative * temperature_change / interval_size;
-        let raw_integral =
-            pid_gains.k_intergral * temperature_error * interval_size + self.stored_integral;
+        let raw_integral = pid_gains.k_intergral * temperature_error * interval_size + self.stored_integral;
         let raw_output = proportional + raw_integral + derivative;
 
         self.last_temperature = actual_temperature;

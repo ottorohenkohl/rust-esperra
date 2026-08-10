@@ -1,13 +1,10 @@
+use crate::domain::clock::Instant;
+use crate::domain::config::port::ConfigPort;
+use crate::domain::gpio::output::OutputMessage;
+use crate::domain::gpio::sensor::TemperatureSensorMessage;
+use crate::library::actor::Actor;
+use crate::library::actor::ActorRef;
 use alloc::sync::Arc;
-
-use crate::{
-    domain::{
-        clock::Instant,
-        config::port::ConfigPort,
-        gpio::{output::OutputMessage, sensor::TemperatureSensorMessage},
-    },
-    library::actor::{Actor, ActorRef},
-};
 
 use super::pid::PidService;
 
@@ -18,29 +15,23 @@ pub enum BoilerMessage {
     StopHeating,
 }
 
-pub struct BoilerActor<C, S, H, I> {
+pub struct BoilerActor<C, I> {
     config: Arc<C>,
     pid_service: PidService<C>,
-    temperature_sensor: S,
-    heating_element: H,
+    temperature_sensor: ActorRef<TemperatureSensorMessage>,
+    heating_element: ActorRef<OutputMessage>,
     cycle_start: I,
 }
 
-impl<C, S, H, I> BoilerActor<C, S, H, I>
+impl<C, I> BoilerActor<C, I>
 where
     C: ConfigPort,
     I: Instant,
 {
-    pub fn new(config: Arc<C>, temperature_sensor: S, heating_element: H, cycle_start: I) -> Self {
+    pub fn new(config: Arc<C>, temperature_sensor: ActorRef<TemperatureSensorMessage>, heating_element: ActorRef<OutputMessage>, cycle_start: I) -> Self {
         let pid_service = PidService::new(Arc::clone(&config));
 
-        Self {
-            config,
-            pid_service,
-            temperature_sensor,
-            heating_element,
-            cycle_start,
-        }
+        Self { config, pid_service, temperature_sensor, heating_element, cycle_start }
     }
 
     fn should_heat(&mut self, temperature: f64) -> bool {
@@ -55,20 +46,16 @@ where
             return true;
         }
 
-        let pid_percentage = self
-            .pid_service
-            .compute(heater_options.target_temperature, temperature);
+        let pid_percentage = self.pid_service.compute(heater_options.target_temperature, temperature);
         let heating_window_ms = heater_options.heating_cycle_ms as f64 * pid_percentage / 100.0;
 
         (cycle_elapsed_ms as f64) < heating_window_ms
     }
 }
 
-impl<C, S, H, I> Actor for BoilerActor<C, S, H, I>
+impl<C, I> Actor for BoilerActor<C, I>
 where
     C: ConfigPort,
-    S: ActorRef<TemperatureSensorMessage>,
-    H: ActorRef<OutputMessage>,
     I: Instant,
 {
     type Message = BoilerMessage;
@@ -76,18 +63,15 @@ where
     fn handle(&mut self, message: Self::Message) {
         match message {
             BoilerMessage::EvaluateHeating => {
-                self.temperature_sensor
-                    .send(TemperatureSensorMessage::MeasureTemperature);
+                self.temperature_sensor.tell(TemperatureSensorMessage::MeasureTemperature);
             }
-            BoilerMessage::RegulateHeating {
-                measured_temperature,
-            } => {
+            BoilerMessage::RegulateHeating { measured_temperature } => {
                 let active = self.should_heat(measured_temperature);
 
-                self.heating_element.send(OutputMessage::SetActive(active));
+                self.heating_element.tell(OutputMessage::SetActive(active));
             }
             BoilerMessage::StopHeating => {
-                self.heating_element.send(OutputMessage::SetActive(false));
+                self.heating_element.tell(OutputMessage::SetActive(false));
             }
         }
     }

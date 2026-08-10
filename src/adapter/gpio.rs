@@ -1,49 +1,57 @@
-use crate::domain::{
-    gpio::output::{LightMessage, OutputMessage},
-    gpio::port::InputPort,
-};
-
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
-use embassy_time::{Duration, Timer};
-use esp_hal::gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin, Pull};
+use crate::domain::gpio::output::LightMessage;
+use crate::domain::gpio::output::OutputMessage;
+use crate::domain::gpio::port::InputPort;
+use crate::library::actor::Actor;
+use embassy_time::Duration;
+use embassy_time::Timer;
+use esp_hal::gpio::Input;
+use esp_hal::gpio::InputConfig;
+use esp_hal::gpio::InputPin;
+use esp_hal::gpio::Level;
+use esp_hal::gpio::Output;
+use esp_hal::gpio::OutputConfig;
+use esp_hal::gpio::OutputPin;
+use esp_hal::gpio::Pull;
 
 const BLINK_DURATION: Duration = Duration::from_millis(250);
 
-pub struct LightActor;
+pub struct LightActor<'d> {
+    pin: Output<'d>,
+}
 
-impl LightActor {
-    pub async fn run<'d, const N: usize>(
-        pin: impl OutputPin + 'd,
-        messages: Receiver<'_, CriticalSectionRawMutex, LightMessage, N>,
-    ) -> ! {
-        let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
+impl<'d> LightActor<'d> {
+    pub fn new(pin: impl OutputPin + 'd) -> Self {
+        Self { pin: Output::new(pin, Level::Low, OutputConfig::default()) }
+    }
+}
 
-        loop {
-            match messages.receive().await {
-                LightMessage::BlinkOnce => {
-                    pin.set_high();
-                    Timer::after(BLINK_DURATION).await;
-                    pin.set_low();
-                }
-                LightMessage::SetActive(active) => set_output(&mut pin, active),
-            }
+impl Actor for LightActor<'_> {
+    type Message = LightMessage;
+
+    fn handle(&mut self, message: Self::Message) {
+        match message {
+            LightMessage::SetActive(active) => set_output(&mut self.pin, active),
+            LightMessage::BlinkOnce => {}
         }
     }
 }
 
-pub struct HeatingElementActor;
+pub struct HeatingElementActor<'d> {
+    pin: Output<'d>,
+}
 
-impl HeatingElementActor {
-    pub async fn run<'d, const N: usize>(
-        pin: impl OutputPin + 'd,
-        messages: Receiver<'_, CriticalSectionRawMutex, OutputMessage, N>,
-    ) -> ! {
-        let mut pin = Output::new(pin, Level::Low, OutputConfig::default());
+impl<'d> HeatingElementActor<'d> {
+    pub fn new(pin: impl OutputPin + 'd) -> Self {
+        Self { pin: Output::new(pin, Level::Low, OutputConfig::default()) }
+    }
+}
 
-        loop {
-            let OutputMessage::SetActive(active) = messages.receive().await;
-            set_output(&mut pin, active);
-        }
+impl Actor for HeatingElementActor<'_> {
+    type Message = OutputMessage;
+
+    fn handle(&mut self, message: Self::Message) {
+        let OutputMessage::SetActive(active) = message;
+        set_output(&mut self.pin, active);
     }
 }
 
@@ -61,9 +69,7 @@ pub struct EspInputPort<'d> {
 
 impl<'d> EspInputPort<'d> {
     pub fn new(pin: impl InputPin + 'd, pull: Pull) -> Self {
-        Self {
-            pin: Input::new(pin, InputConfig::default().with_pull(pull)),
-        }
+        Self { pin: Input::new(pin, InputConfig::default().with_pull(pull)) }
     }
 }
 

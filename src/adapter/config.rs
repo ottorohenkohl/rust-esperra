@@ -1,7 +1,10 @@
-use crate::domain::config::port::{ConfigPort, HeaterOptions, PidGains};
-
-use embedded_storage::{ReadStorage, Storage};
-use esp_storage::{FlashStorage, FlashStorageError};
+use crate::domain::config::port::ConfigPort;
+use crate::domain::config::port::HeaterOptions;
+use crate::domain::config::port::PidGains;
+use embedded_storage::ReadStorage;
+use embedded_storage::Storage;
+use esp_storage::FlashStorage;
+use esp_storage::FlashStorageError;
 
 use esp_hal::peripherals::FLASH;
 
@@ -15,18 +18,7 @@ pub struct DefaultConfigPort {
 
 impl DefaultConfigPort {
     pub const fn new() -> Self {
-        Self {
-            heater_options: HeaterOptions {
-                heating_cycle_ms: 100_000,
-                target_temperature: 65.0,
-                boost_intervall_size: 5.0,
-            },
-            pid_gains: PidGains {
-                k_proportional: 1.0,
-                k_intergral: 0.0,
-                k_derivative: 0.0,
-            },
-        }
+        Self { heater_options: HeaterOptions { heating_cycle_ms: 100_000, target_temperature: 65.0, boost_intervall_size: 5.0 }, pid_gains: PidGains { k_proportional: 1.0, k_intergral: 0.0, k_derivative: 0.0 } }
     }
 }
 
@@ -60,32 +52,15 @@ impl<'d> FlashConfigPort<'d> {
         let mut pid_gains = Self::default_pid_gains();
 
         if Self::read_u16(&record, 0) == MAGIC_RECORD {
-            heater_options = HeaterOptions {
-                heating_cycle_ms: Self::read_u64(&record, 4),
-                target_temperature: Self::read_f64(&record, 12),
-                boost_intervall_size: Self::read_f64(&record, 20),
-            };
+            heater_options = HeaterOptions { heating_cycle_ms: Self::read_u64(&record, 4), target_temperature: Self::read_f64(&record, 12), boost_intervall_size: Self::read_f64(&record, 20) };
 
-            pid_gains = PidGains {
-                k_proportional: Self::read_f64(&record, 28),
-                k_intergral: Self::read_f64(&record, 36),
-                k_derivative: Self::read_f64(&record, 44),
-            };
+            pid_gains = PidGains { k_proportional: Self::read_f64(&record, 28), k_intergral: Self::read_f64(&record, 36), k_derivative: Self::read_f64(&record, 44) };
         }
 
-        Ok(Self {
-            storage,
-            storage_offset,
-            heater_options,
-            pid_gains,
-        })
+        Ok(Self { storage, storage_offset, heater_options, pid_gains })
     }
 
-    pub fn save(
-        &mut self,
-        heater_options: HeaterOptions,
-        pid_gains: PidGains,
-    ) -> Result<(), FlashStorageError> {
+    pub fn save(&mut self, heater_options: HeaterOptions, pid_gains: PidGains) -> Result<(), FlashStorageError> {
         let record = Self::encode(heater_options, pid_gains);
 
         self.storage.write(self.storage_offset, &record)?;
@@ -124,19 +99,11 @@ impl<'d> FlashConfigPort<'d> {
     }
 
     fn default_heater_options() -> HeaterOptions {
-        HeaterOptions {
-            heating_cycle_ms: 100_000,
-            target_temperature: 65.0,
-            boost_intervall_size: 5.0,
-        }
+        HeaterOptions { heating_cycle_ms: 100_000, target_temperature: 65.0, boost_intervall_size: 5.0 }
     }
 
     fn default_pid_gains() -> PidGains {
-        PidGains {
-            k_proportional: 1.0,
-            k_intergral: 0.0,
-            k_derivative: 0.0,
-        }
+        PidGains { k_proportional: 1.0, k_intergral: 0.0, k_derivative: 0.0 }
     }
 }
 

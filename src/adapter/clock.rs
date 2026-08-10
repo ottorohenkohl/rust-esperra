@@ -6,9 +6,7 @@ pub struct EmbassyInstant {
 
 impl EmbassyInstant {
     pub fn now() -> Self {
-        Self {
-            started_at: embassy_time::Instant::now(),
-        }
+        Self { started_at: embassy_time::Instant::now() }
     }
 }
 
