@@ -4,6 +4,7 @@ use esp_storage::{FlashStorage, FlashStorageError};
 
 use esp_hal::peripherals::FLASH;
 
+const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const MAGIC_RECORD: u16 = 2307;
 const RECORD_SIZE: usize = 52;
 
@@ -12,33 +13,40 @@ pub struct FlashConfigPort<'d> {
 
     heater_options: HeaterOptions,
     pid_gains: PidGains,
-    storage_offset: u32,
 }
 
 impl<'d> FlashConfigPort<'d> {
-    pub fn new(flash: FLASH<'d>, storage_offset: u32) -> Result<Self, FlashStorageError> {
+    pub fn new(flash: FLASH<'d>) -> Result<Self, FlashStorageError> {
         let mut storage = FlashStorage::new(flash);
 
         let mut record = [0; RECORD_SIZE];
 
-        storage.read(storage_offset, &mut record)?;
+        storage.read(CONFIG_STORAGE_OFFSET, &mut record)?;
 
         let mut heater_options = Self::default_heater_options();
         let mut pid_gains = Self::default_pid_gains();
 
         if Self::read_u16(&record, 0) == MAGIC_RECORD {
-            heater_options = HeaterOptions { heating_cycle_ms: Self::read_u64(&record, 4), target_temperature: Self::read_f64(&record, 12), boost_intervall_size: Self::read_f64(&record, 20) };
+            heater_options = HeaterOptions {
+                heating_cycle_ms: Self::read_u64(&record, 4),
+                target_temperature: Self::read_f64(&record, 12),
+                boost_intervall_size: Self::read_f64(&record, 20),
+            };
 
-            pid_gains = PidGains { k_proportional: Self::read_f64(&record, 28), k_intergral: Self::read_f64(&record, 36), k_derivative: Self::read_f64(&record, 44) };
+            pid_gains = PidGains {
+                k_proportional: Self::read_f64(&record, 28),
+                k_intergral: Self::read_f64(&record, 36),
+                k_derivative: Self::read_f64(&record, 44),
+            };
         }
 
-        Ok(Self { storage, storage_offset, heater_options, pid_gains })
+        Ok(Self { storage, heater_options, pid_gains })
     }
 
     pub fn save(&mut self, heater_options: HeaterOptions, pid_gains: PidGains) -> Result<(), FlashStorageError> {
         let record = Self::encode(heater_options, pid_gains);
 
-        self.storage.write(self.storage_offset, &record)?;
+        self.storage.write(CONFIG_STORAGE_OFFSET, &record)?;
 
         self.heater_options = heater_options;
         self.pid_gains = pid_gains;

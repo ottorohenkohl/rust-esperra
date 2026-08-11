@@ -22,7 +22,7 @@ impl<Message: 'static> ActorRef<Message> {
         let _ = self.sender.try_send(message);
     }
 
-    pub fn subscriber<PublishedMessage>(&self) -> Subscriber<PublishedMessage> where Message: From<PublishedMessage>, PublishedMessage: 'static {
+    pub fn subscriber<PublishedMessage, const size: usize>(&self) -> Subscriber<PublishedMessage, size> where Message: From<PublishedMessage>, PublishedMessage: 'static {
         let actor_ref = self.clone();
 
         let tell = Arc::new(move |message| actor_ref.tell(Message::from(message)));
@@ -31,11 +31,11 @@ impl<Message: 'static> ActorRef<Message> {
     }
 }
 
-pub struct Subscriber<Message> {
+pub struct Subscriber<Message, const size: usize> {
     tell: Arc<dyn Fn(Message)>,
 }
 
-impl<Message> Clone for Subscriber<Message> {
+impl<Message, const size: usize> Clone for Subscriber<Message, size> {
     fn clone(&self) -> Self {
         let tell = Arc::clone(&self.tell);
 
@@ -43,7 +43,7 @@ impl<Message> Clone for Subscriber<Message> {
     }
 }
 
-impl<Message> Subscriber<Message> {
+impl<Message, const size: usize> Subscriber<Message, size> {
     pub fn tell(&self, message: Message) {
         (self.tell)(message);
     }

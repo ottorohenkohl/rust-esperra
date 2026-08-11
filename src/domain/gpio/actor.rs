@@ -39,19 +39,12 @@ impl<P, T> Actor for LightActor<P, T> where P: OutputPort, T: TimerPort {
 
 pub struct TemperatureSensorActor<P> {
     temperature_port: P,
-    subscribers: Vec<Subscriber<TemperatureSensorResponse>, 8>,
+    subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>,
 }
 
 impl<P> TemperatureSensorActor<P> {
-    pub fn new(temperature_port: P) -> Self {
-        let subscribers = Vec::new();
-
+    pub fn new(temperature_port: P, subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>) -> Self {
         Self { temperature_port, subscribers }
-    }
-
-    pub fn subscribe(&mut self, subscriber: Subscriber<TemperatureSensorResponse>) -> Result<(), Subscriber<TemperatureSensorResponse>>
-    {
-        self.subscribers.push(subscriber)
     }
 }
 

@@ -3,35 +3,33 @@
 
 extern crate alloc;
 
+use crate::adapter::gpio::EspOutputPort;
+
 use adapter::config::FlashConfigPort;
-use adapter::gpio::HeatingElementActor;
 use adapter::sensor::Ds18b20TemperaturePort;
 use alloc::sync::Arc;
-use core::panic::PanicInfo;
 use domain::boiler::actor::BoilerActor;
 use domain::boiler::protocol::BoilerMessage;
 use domain::gpio::actor::TemperatureSensorActor;
-use domain::gpio::protocol::{OutputMessage, TemperatureSensorMessage};
 use embassy_executor::Spawner;
-use embassy_futures::join::{join, join3};
+use domain::gpio::protocol::TemperatureSensorMessage;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::timer::timg::TimerGroup;
+use heapless::Vec;
 use library::actor::mailbox::Mailbox;
 
-use crate::adapter::gpio::EspOutputPort;
+use embassy_futures::join::join;
 
 mod adapter;
 mod domain;
 mod library;
 
-const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
-const TEMPERATURE_MEASUREMENT_INTERVAL: Duration = Duration::from_secs(1);
+const TICK_INTERVALL: Duration = Duration::from_millis(100);
 
-static BOILER_ACTOR_MAILBOX: Mailbox<BoilerMessage> = Mailbox::new();
-static TEMPERATURE_SENSOR_ACTOR_MAILBOX: Mailbox<TemperatureSensorMessage> = Mailbox::new();
-static HEATING_OUTPUT_ACTOR_MAILBOX: Mailbox<OutputMessage> = Mailbox::new();
+static BOILER_ACTOR_MAILBOX: Mailbox<BoilerMessage, 8> = Mailbox::new();
+static TEMPERATURE_SENSOR_ACTOR_MAILBOX: Mailbox<TemperatureSensorMessage, 1> = Mailbox::new();
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -47,25 +45,25 @@ async fn main(_spawner: Spawner) {
 
     let temperature_port = Ds18b20TemperaturePort::new(peripherals.GPIO4).unwrap();
     let heating_output_port = EspOutputPort::new(peripherals.GPIO10);
+    let config_port = Arc::new(FlashConfigPort::new(peripherals.FLASH).unwrap());
 
     let boiler_ref = BOILER_ACTOR_MAILBOX.actor_ref();
 
-    let config_port = Arc::new(FlashConfigPort::new(peripherals.FLASH, CONFIG_STORAGE_OFFSET).unwrap());
     let boiler_actor = BoilerActor::new(config_port, heating_output_port);
+    let temperature_sensor_actor = TemperatureSensorActor::new(temperature_port, Vec::from_slice(&[boiler_ref.subscriber()]).unwrap());
 
-    let mut temperature_sensor_actor = TemperatureSensorActor::new(temperature_port);
-
-    assert!(temperature_sensor_actor.subscribe(boiler_ref.subscriber()).is_ok());
-
-    join(join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor), HEATING_OUTPUT_ACTOR_MAILBOX.run(heating_output_actor)), event_loop()).await;
+    join(join(BOILER_ACTOR_MAILBOX.run(boiler_actor), TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor)), event_loop()).await;
 }
 
 async fn event_loop() {
-    let temperature_sensor = TEMPERATURE_SENSOR_ACTOR_MAILBOX.actor_ref();
+    let boiler_actor = BOILER_ACTOR_MAILBOX.actor_ref();
+    let temperature_sensor_actor = TEMPERATURE_SENSOR_ACTOR_MAILBOX.actor_ref();
+
 
     loop {
-        temperature_sensor.tell(TemperatureSensorMessage::MeasureTemperature);
+        boiler_actor.tell(BoilerMessage::SwitchHeater);
+        temperature_sensor_actor.tell(TemperatureSensorMessage::MeasureTemperature);
 
-        Timer::after(TEMPERATURE_MEASUREMENT_INTERVAL).await;
+        Timer::after(TICK_INTERVALL).await;
     }
 }

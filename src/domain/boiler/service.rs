@@ -20,7 +20,7 @@ impl<C> PidService<C> where C: ConfigPort {
         Self { config_provider, last_temperature, stored_integral, last_update }
     }
 
-    pub fn compute(&mut self, target_temperature: f64, actual_temperature: f64) -> f64 {
+    pub fn compute(&mut self, actual_temperature: f64, target_temperature: f64) -> f64 {
         let now = Instant::now();
 
         let pid_gains = self.config_provider.read_pid_gains();
