@@ -2,26 +2,25 @@ use super::protocol::BoilerMessage;
 use super::service::PidService;
 
 use crate::domain::config::port::ConfigPort;
-use crate::domain::gpio::protocol::OutputMessage;
+use crate::domain::gpio::port::OutputPort;
 use crate::library::actor::Actor;
-use crate::library::actor::reference::ActorRef;
 
 use alloc::sync::Arc;
 use embassy_time::Instant;
 
-pub struct BoilerActor<C> {
+pub struct BoilerActor<C, H> {
     config: Arc<C>,
     cycle_start: Instant,
-    heating_element: ActorRef<OutputMessage>,
+    heating_output_port: H,
     pid_service: PidService<C>,
 }
 
-impl<C> BoilerActor<C> where C: ConfigPort {
-    pub fn new(config: Arc<C>, heating_element: ActorRef<OutputMessage>) -> Self {
+impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
+    pub fn new(config: Arc<C>, heating_output_port: H) -> Self {
         let pid_service = PidService::new(Arc::clone(&config));
         let cycle_start = Instant::now();
 
-        Self { config, pid_service, heating_element, cycle_start }
+        Self { config, pid_service, heating_output_port, cycle_start }
     }
 
     fn should_heat(&mut self, temperature: f64) -> bool {
@@ -42,20 +41,18 @@ impl<C> BoilerActor<C> where C: ConfigPort {
     }
 }
 
-impl<C> Actor for BoilerActor<C> where C: ConfigPort {
+impl<C, H> Actor for BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
     type Message = BoilerMessage;
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
             BoilerMessage::RegulateHeating { measured_temperature } => {
-                let message = OutputMessage::SetActive(self.should_heat(measured_temperature));
+                let should_heat = self.should_heat(measured_temperature);
 
-                self.heating_element.tell(message);
+                self.heating_output_port.set_active(should_heat).await;
             }
             BoilerMessage::StopHeating => {
-                let message = OutputMessage::SetActive(false);
-
-                self.heating_element.tell(message);
+                self.heating_output_port.set_active(false).await;
             }
         }
     }

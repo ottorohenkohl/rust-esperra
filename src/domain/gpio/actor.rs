@@ -1,32 +1,37 @@
-use super::port::{LightPort, TemperatureSensorPort};
+use super::port::{OutputPort, TemperatureSensorPort};
 use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
 
+use crate::domain::gpio::port::TimerPort;
 use crate::library::actor::Actor;
 use crate::library::actor::reference::Subscriber;
 use crate::library::error::Error;
 
 use heapless::Vec;
 
-pub struct LightActor<P> {
-    light_port: P,
+pub struct LightActor<P, T> {
+    output_port: P,
+    timer_port: T,
 }
 
-impl<P> LightActor<P> {
-    pub fn new(light_port: P) -> Self {
-        Self { light_port }
+impl<P, T> LightActor<P, T> {
+    pub fn new(output_port: P, timer_port: T) -> Self {
+        Self { output_port, timer_port }
     }
 }
 
-impl<P> Actor for LightActor<P> where P: LightPort {
+impl<P, T> Actor for LightActor<P, T> where P: OutputPort, T: TimerPort {
     type Message = LightMessage;
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
             LightMessage::SetActive(active) => {
-                let _ = self.light_port.set_active(active).await;
+                let _ = self.output_port.set_active(active).await;
             }
             LightMessage::BlinkTimes(times) => {
-                let _ = self.light_port.blink(times).await;
+                for _ in 0..(times * 2) {
+                    self.output_port.invert_state().await;
+                    self.timer_port.wait_for(200).await;
+                }
             }
         }
     }

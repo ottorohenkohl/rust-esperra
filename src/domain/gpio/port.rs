@@ -4,11 +4,15 @@ pub trait InputPort {
     fn powered_state(&mut self) -> bool;
 }
 
-pub trait LightPort {
-    async fn set_active(&mut self, active: bool) -> Result<(), Error>;
-    async fn blink(&mut self, times: u8) -> Result<(), Error>;
+pub trait OutputPort {
+    async fn invert_state(&mut self);
+    async fn set_active(&mut self, active: bool);
 }
 
 pub trait TemperatureSensorPort {
     async fn read_temperature(&mut self) -> Result<f64, Error>;
+}
+
+pub trait TimerPort {
+    async fn wait_for(&self, millis: u64);
 }

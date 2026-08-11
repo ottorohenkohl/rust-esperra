@@ -20,6 +20,8 @@ use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::timer::timg::TimerGroup;
 use library::actor::mailbox::Mailbox;
 
+use crate::adapter::gpio::EspOutputPort;
+
 mod adapter;
 mod domain;
 mod library;
@@ -42,14 +44,13 @@ async fn main(_spawner: Spawner) {
 
     esp_rtos::start(TimerGroup::new(peripherals.TIMG0).timer0, SoftwareInterruptControl::new(peripherals.SW_INTERRUPT).software_interrupt0);
 
+    let temperature_port = Ds18b20TemperaturePort::new(peripherals.GPIO4).unwrap();
+    let heating_output_port = EspOutputPort::new(peripherals.GPIO10);
+
     let boiler_ref = BOILER_ACTOR_MAILBOX.actor_ref();
-    let heating_element_ref = HEATING_OUTPUT_ACTOR_MAILBOX.actor_ref();
 
     let config_port = Arc::new(DefaultConfigPort::new());
-    let boiler_actor = BoilerActor::new(config_port, heating_element_ref);
-    let heating_output_actor = HeatingElementActor::new(peripherals.GPIO5);
-
-    let temperature_port = Ds18b20TemperaturePort::new(peripherals.GPIO4).unwrap();
+    let boiler_actor = BoilerActor::new(config_port, heating_output_port);
 
     let mut temperature_sensor_actor = TemperatureSensorActor::new(temperature_port);
 

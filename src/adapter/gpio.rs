@@ -1,62 +1,31 @@
 use crate::domain::gpio::port::InputPort;
-use crate::domain::gpio::port::LightPort;
-use crate::domain::gpio::protocol::OutputMessage;
-use crate::library::actor::Actor;
-use crate::library::error::Error;
-use embassy_time::{Duration, Timer};
+use crate::domain::gpio::port::OutputPort;
+
 use esp_hal::gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin, Pull};
 
-pub struct GpioLightPort<'d> {
+pub struct EspOutputPort<'d> {
     pin: Output<'d>,
 }
 
-impl<'d> GpioLightPort<'d> {
+impl<'d> EspOutputPort<'d> {
     pub fn new(pin: impl OutputPin + 'd) -> Self {
-        Self { pin: Output::new(pin, Level::Low, OutputConfig::default()) }
+        let pin = Output::new(pin, Level::Low, OutputConfig::default());
+
+        Self { pin }
     }
 }
 
-impl LightPort for GpioLightPort<'_> {
-    async fn set_active(&mut self, active: bool) -> Result<(), Error> {
-        set_output(&mut self.pin, active);
-        Ok(())
-    }
-
-    async fn blink(&mut self, times: u8) -> Result<(), Error> {
-        for _ in 0..times {
+impl OutputPort for EspOutputPort<'_> {
+    async fn set_active(&mut self, active: bool) {
+        if active {
             self.pin.set_high();
-            Timer::after(Duration::from_millis(500)).await;
+        } else {
             self.pin.set_low();
         }
-
-        Ok(())
     }
-}
 
-pub struct HeatingElementActor<'d> {
-    pin: Output<'d>,
-}
-
-impl<'d> HeatingElementActor<'d> {
-    pub fn new(pin: impl OutputPin + 'd) -> Self {
-        Self { pin: Output::new(pin, Level::Low, OutputConfig::default()) }
-    }
-}
-
-impl Actor for HeatingElementActor<'_> {
-    type Message = OutputMessage;
-
-    async fn handle(&mut self, message: Self::Message) {
-        let OutputMessage::SetActive(active) = message;
-        set_output(&mut self.pin, active);
-    }
-}
-
-fn set_output(pin: &mut Output<'_>, active: bool) {
-    if active {
-        pin.set_high();
-    } else {
-        pin.set_low();
+    async fn invert_state(&mut self) {
+        self.set_active(self.pin.is_set_low());
     }
 }
 
@@ -66,7 +35,9 @@ pub struct EspInputPort<'d> {
 
 impl<'d> EspInputPort<'d> {
     pub fn new(pin: impl InputPin + 'd, pull: Pull) -> Self {
-        Self { pin: Input::new(pin, InputConfig::default().with_pull(pull)) }
+        let pin = Input::new(pin, InputConfig::default().with_pull(pull));
+
+        Self { pin }
     }
 }
 
