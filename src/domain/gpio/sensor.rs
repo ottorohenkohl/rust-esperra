@@ -1,16 +1,12 @@
 use crate::library::actor::Actor;
 use crate::library::actor::Subscriber;
+use crate::library::error::Error;
 use heapless::Vec;
 
 const MAX_SUBSCRIBERS: usize = 4;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TemperatureReadError {
-    MeasurementFailed,
-}
-
 pub trait TemperaturePort {
-    async fn read_temperature(&mut self) -> Result<f64, TemperatureReadError>;
+    async fn read_temperature(&mut self) -> Result<f64, Error>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -49,7 +45,7 @@ where
         let TemperatureSensorMessage::MeasureTemperature = message;
         let reading = match self.port.read_temperature().await {
             Ok(temperature) => TemperatureReading::Measured(temperature),
-            Err(TemperatureReadError::MeasurementFailed) => TemperatureReading::MeasurementFailed,
+            Err(Error) => TemperatureReading::MeasurementFailed,
         };
         for subscriber in &self.subscribers {
             subscriber.tell(reading);
