@@ -27,7 +27,7 @@ mod adapter;
 mod domain;
 mod library;
 
-const BOILER_INTERVAL: Duration = Duration::from_secs(1);
+const TEMPERATURE_MEASUREMENT_INTERVAL: Duration = Duration::from_secs(1);
 
 static BOILER_MAILBOX: Mailbox<BoilerMessage, 4> = Mailbox::new();
 static SENSOR_MAILBOX: Mailbox<TemperatureSensorMessage, 1> = Mailbox::new();
@@ -49,20 +49,20 @@ async fn main(_spawner: Spawner) -> ! {
     let temperature_sensor_ref = SENSOR_MAILBOX.actor_ref();
     let heating_element_ref = HEATING_ELEMENT_MAILBOX.actor_ref();
     let config: Arc<dyn domain::config::port::ConfigPort> = Arc::new(DefaultConfigPort::new());
-    let boiler = BoilerActor::new(config, temperature_sensor_ref, heating_element_ref);
+    let boiler = BoilerActor::new(config, heating_element_ref);
     let mut temperature_sensor = TemperatureSensorActor::new(peripherals.GPIO4).unwrap();
     assert!(temperature_sensor.subscribe(boiler_ref.subscriber()).is_ok());
     let heating_element = HeatingElementActor::new(peripherals.GPIO5);
 
-    join3(BOILER_MAILBOX.run(boiler), SENSOR_MAILBOX.run(temperature_sensor), join(HEATING_ELEMENT_MAILBOX.run(heating_element), evaluate_boiler(&boiler_ref))).await;
+    join3(BOILER_MAILBOX.run(boiler), SENSOR_MAILBOX.run(temperature_sensor), join(HEATING_ELEMENT_MAILBOX.run(heating_element), measure_temperature(&temperature_sensor_ref))).await;
 
     unreachable!()
 }
 
-async fn evaluate_boiler(boiler: &ActorRef<BoilerMessage>) -> ! {
+async fn measure_temperature(temperature_sensor: &ActorRef<TemperatureSensorMessage>) -> ! {
     loop {
-        boiler.tell(BoilerMessage::EvaluateHeating);
-        Timer::after(BOILER_INTERVAL).await;
+        temperature_sensor.tell(TemperatureSensorMessage::MeasureTemperature);
+        Timer::after(TEMPERATURE_MEASUREMENT_INTERVAL).await;
     }
 }
 

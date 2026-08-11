@@ -1,7 +1,6 @@
 use crate::domain::config::port::ConfigPort;
 use crate::domain::gpio::output::OutputMessage;
 use crate::domain::gpio::sensor::TemperatureReading;
-use crate::domain::gpio::sensor::TemperatureSensorMessage;
 use crate::library::actor::Actor;
 use crate::library::actor::ActorRef;
 use alloc::sync::Arc;
@@ -11,7 +10,6 @@ use super::pid::PidService;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BoilerMessage {
-    EvaluateHeating,
     RegulateHeating { measured_temperature: f64 },
     StopHeating,
 }
@@ -28,15 +26,14 @@ impl From<TemperatureReading> for BoilerMessage {
 pub struct BoilerActor {
     config: Arc<dyn ConfigPort>,
     pid_service: PidService,
-    temperature_sensor: ActorRef<TemperatureSensorMessage>,
     heating_element: ActorRef<OutputMessage>,
     cycle_start: Instant,
 }
 
 impl BoilerActor {
-    pub fn new(config: Arc<dyn ConfigPort>, temperature_sensor: ActorRef<TemperatureSensorMessage>, heating_element: ActorRef<OutputMessage>) -> Self {
+    pub fn new(config: Arc<dyn ConfigPort>, heating_element: ActorRef<OutputMessage>) -> Self {
         let pid_service = PidService::new(Arc::clone(&config));
-        Self { config, pid_service, temperature_sensor, heating_element, cycle_start: Instant::now() }
+        Self { config, pid_service, heating_element, cycle_start: Instant::now() }
     }
 
     fn should_heat(&mut self, temperature: f64) -> bool {
@@ -63,7 +60,6 @@ impl Actor for BoilerActor {
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            BoilerMessage::EvaluateHeating => self.temperature_sensor.tell(TemperatureSensorMessage::MeasureTemperature),
             BoilerMessage::RegulateHeating { measured_temperature } => {
                 let active = self.should_heat(measured_temperature);
                 self.heating_element.tell(OutputMessage::SetActive(active));
