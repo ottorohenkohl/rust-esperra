@@ -1,8 +1,7 @@
 use crate::domain::config::port::ConfigPort;
 use crate::domain::gpio::output::OutputMessage;
 use crate::domain::gpio::sensor::TemperatureReading;
-use crate::library::actor::Actor;
-use crate::library::actor::ActorRef;
+use crate::library::actor::{Actor, ActorRef};
 use alloc::sync::Arc;
 use embassy_time::Instant;
 

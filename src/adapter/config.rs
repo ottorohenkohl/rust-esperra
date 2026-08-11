@@ -1,10 +1,6 @@
-use crate::domain::config::port::ConfigPort;
-use crate::domain::config::port::HeaterOptions;
-use crate::domain::config::port::PidGains;
-use embedded_storage::ReadStorage;
-use embedded_storage::Storage;
-use esp_storage::FlashStorage;
-use esp_storage::FlashStorageError;
+use crate::domain::config::port::{ConfigPort, HeaterOptions, PidGains};
+use embedded_storage::{ReadStorage, Storage};
+use esp_storage::{FlashStorage, FlashStorageError};
 
 use esp_hal::peripherals::FLASH;
 

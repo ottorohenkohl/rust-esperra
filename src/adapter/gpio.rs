@@ -1,18 +1,9 @@
-use crate::domain::gpio::output::LightPort;
-use crate::domain::gpio::output::OutputMessage;
+use crate::domain::gpio::output::{LightPort, OutputMessage};
 use crate::domain::gpio::port::InputPort;
 use crate::library::actor::Actor;
 use crate::library::error::Error;
-use embassy_time::Duration;
-use embassy_time::Timer;
-use esp_hal::gpio::Input;
-use esp_hal::gpio::InputConfig;
-use esp_hal::gpio::InputPin;
-use esp_hal::gpio::Level;
-use esp_hal::gpio::Output;
-use esp_hal::gpio::OutputConfig;
-use esp_hal::gpio::OutputPin;
-use esp_hal::gpio::Pull;
+use embassy_time::{Duration, Timer};
+use esp_hal::gpio::{Input, InputConfig, InputPin, Level, Output, OutputConfig, OutputPin, Pull};
 
 pub struct GpioLightPort<'d> {
     pin: Output<'d>,

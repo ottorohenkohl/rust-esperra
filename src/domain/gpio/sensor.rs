@@ -1,5 +1,4 @@
-use crate::library::actor::Actor;
-use crate::library::actor::Subscriber;
+use crate::library::actor::{Actor, Subscriber};
 use crate::library::error::Error;
 use heapless::Vec;
 

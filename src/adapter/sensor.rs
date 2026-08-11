@@ -1,15 +1,9 @@
 use crate::domain::gpio::sensor::TemperaturePort;
 use crate::library::error::Error;
-use embassy_time::Duration;
-use embassy_time::Timer;
+use embassy_time::{Duration, Timer};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::DriveMode;
-use esp_hal::gpio::Flex;
-use esp_hal::gpio::OutputConfig;
-use esp_hal::gpio::Pin;
-use onewire::DS18B20;
-use onewire::DeviceSearch;
-use onewire::OneWire;
+use esp_hal::gpio::{DriveMode, Flex, OutputConfig, Pin};
+use onewire::{DS18B20, DeviceSearch, OneWire};
 
 pub struct Ds18b20TemperaturePort<'d> {
     bus: OneWire<Flex<'d>>,
