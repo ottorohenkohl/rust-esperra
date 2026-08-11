@@ -1,7 +1,8 @@
-use crate::domain::gpio::output::LightMessage;
+use crate::domain::gpio::output::LightPort;
 use crate::domain::gpio::output::OutputMessage;
 use crate::domain::gpio::port::InputPort;
 use crate::library::actor::Actor;
+use crate::library::error::Error;
 use embassy_time::Duration;
 use embassy_time::Timer;
 use esp_hal::gpio::Input;
@@ -13,30 +14,27 @@ use esp_hal::gpio::OutputConfig;
 use esp_hal::gpio::OutputPin;
 use esp_hal::gpio::Pull;
 
-const BLINK_DURATION: Duration = Duration::from_millis(250);
-
-pub struct LightActor<'d> {
+pub struct GpioLightPort<'d> {
     pin: Output<'d>,
 }
 
-impl<'d> LightActor<'d> {
+impl<'d> GpioLightPort<'d> {
     pub fn new(pin: impl OutputPin + 'd) -> Self {
         Self { pin: Output::new(pin, Level::Low, OutputConfig::default()) }
     }
 }
 
-impl Actor for LightActor<'_> {
-    type Message = LightMessage;
+impl LightPort for GpioLightPort<'_> {
+    async fn set_active(&mut self, active: bool) -> Result<(), Error> {
+        set_output(&mut self.pin, active);
+        Ok(())
+    }
 
-    async fn handle(&mut self, message: Self::Message) {
-        match message {
-            LightMessage::SetActive(active) => set_output(&mut self.pin, active),
-            LightMessage::BlinkOnce => {
-                self.pin.set_high();
-                Timer::after(BLINK_DURATION).await;
-                self.pin.set_low();
-            }
-        }
+    async fn blink(&mut self, duration: Duration) -> Result<(), Error> {
+        self.pin.set_high();
+        Timer::after(duration).await;
+        self.pin.set_low();
+        Ok(())
     }
 }
 
