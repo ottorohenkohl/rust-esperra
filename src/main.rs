@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use adapter::config::DefaultConfigPort;
+use adapter::config::FlashConfigPort;
 use adapter::gpio::HeatingElementActor;
 use adapter::sensor::Ds18b20TemperaturePort;
 use alloc::sync::Arc;
@@ -26,6 +26,7 @@ mod adapter;
 mod domain;
 mod library;
 
+const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const TEMPERATURE_MEASUREMENT_INTERVAL: Duration = Duration::from_secs(1);
 
 static BOILER_ACTOR_MAILBOX: Mailbox<BoilerMessage> = Mailbox::new();
@@ -49,7 +50,7 @@ async fn main(_spawner: Spawner) {
 
     let boiler_ref = BOILER_ACTOR_MAILBOX.actor_ref();
 
-    let config_port = Arc::new(DefaultConfigPort::new());
+    let config_port = Arc::new(FlashConfigPort::new(peripherals.FLASH, CONFIG_STORAGE_OFFSET).unwrap());
     let boiler_actor = BoilerActor::new(config_port, heating_output_port);
 
     let mut temperature_sensor_actor = TemperatureSensorActor::new(temperature_port);
