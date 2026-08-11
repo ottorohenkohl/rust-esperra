@@ -5,24 +5,19 @@ use crate::library::actor::Actor;
 use crate::library::actor::reference::Subscriber;
 use crate::library::error::Error;
 
-use embassy_time::Duration;
 use heapless::Vec;
 
 pub struct LightActor<P> {
     light_port: P,
-    blink_duration: Duration,
 }
 
 impl<P> LightActor<P> {
-    pub fn new(light_port: P, blink_duration: Duration) -> Self {
-        Self { light_port, blink_duration }
+    pub fn new(light_port: P) -> Self {
+        Self { light_port }
     }
 }
 
-impl<P> Actor for LightActor<P>
-where
-    P: LightPort,
-{
+impl<P> Actor for LightActor<P> where P: LightPort {
     type Message = LightMessage;
 
     async fn handle(&mut self, message: Self::Message) {
@@ -30,32 +25,32 @@ where
             LightMessage::SetActive(active) => {
                 let _ = self.light_port.set_active(active).await;
             }
-            LightMessage::BlinkOnce => {
-                let _ = self.light_port.blink(self.blink_duration).await;
+            LightMessage::BlinkTimes(times) => {
+                let _ = self.light_port.blink(times).await;
             }
         }
     }
 }
 
-pub struct TemperatureActor<P> {
+pub struct TemperatureSensorActor<P> {
     temperature_port: P,
     subscribers: Vec<Subscriber<TemperatureSensorResponse>, 8>,
 }
 
-impl<P> TemperatureActor<P> {
+impl<P> TemperatureSensorActor<P> {
     pub fn new(temperature_port: P) -> Self {
-        Self { temperature_port, subscribers: Vec::new() }
+        let subscribers = Vec::new();
+
+        Self { temperature_port, subscribers }
     }
 
-    pub fn subscribe(&mut self, subscriber: Subscriber<TemperatureSensorResponse>) -> Result<(), Subscriber<TemperatureSensorResponse>> {
+    pub fn subscribe(&mut self, subscriber: Subscriber<TemperatureSensorResponse>) -> Result<(), Subscriber<TemperatureSensorResponse>>
+    {
         self.subscribers.push(subscriber)
     }
 }
 
-impl<P> Actor for TemperatureActor<P>
-where
-    P: TemperatureSensorPort,
-{
+impl<P> Actor for TemperatureSensorActor<P> where P: TemperatureSensorPort {
     type Message = TemperatureSensorMessage;
 
     async fn handle(&mut self, message: Self::Message) {
@@ -66,9 +61,7 @@ where
                     Err(Error) => TemperatureSensorResponse::MeasurementFailed,
                 };
 
-                self.subscribers.iter().for_each(|i| {
-                    i.tell(message);
-                });
+                self.subscribers.iter().for_each(|i| { i.tell(message) });
             }
         }
     }

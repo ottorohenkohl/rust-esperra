@@ -11,19 +11,17 @@ use embassy_time::Instant;
 
 pub struct BoilerActor<C> {
     config: Arc<C>,
-    pid_service: PidService<C>,
-    heating_element: ActorRef<OutputMessage>,
     cycle_start: Instant,
+    heating_element: ActorRef<OutputMessage>,
+    pid_service: PidService<C>,
 }
 
-impl<C> BoilerActor<C>
-where
-    C: ConfigPort,
-{
+impl<C> BoilerActor<C> where C: ConfigPort {
     pub fn new(config: Arc<C>, heating_element: ActorRef<OutputMessage>) -> Self {
         let pid_service = PidService::new(Arc::clone(&config));
+        let cycle_start = Instant::now();
 
-        Self { config, pid_service, heating_element, cycle_start: Instant::now() }
+        Self { config, pid_service, heating_element, cycle_start }
     }
 
     fn should_heat(&mut self, temperature: f64) -> bool {
@@ -44,10 +42,7 @@ where
     }
 }
 
-impl<C> Actor for BoilerActor<C>
-where
-    C: ConfigPort,
-{
+impl<C> Actor for BoilerActor<C> where C: ConfigPort {
     type Message = BoilerMessage;
 
     async fn handle(&mut self, message: Self::Message) {

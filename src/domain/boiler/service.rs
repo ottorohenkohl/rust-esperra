@@ -10,10 +10,7 @@ pub struct PidService<C> {
     stored_integral: f64,
 }
 
-impl<C> PidService<C>
-where
-    C: ConfigPort,
-{
+impl<C> PidService<C> where C: ConfigPort {
     pub fn new(config_provider: Arc<C>) -> Self {
         let last_temperature = 0.0;
         let stored_integral = 0.0;
@@ -51,6 +48,6 @@ where
     }
 
     fn current_interval_size(&self, now: Instant) -> f64 {
-        return (now - self.last_update).as_millis() as f64 / 1000.0;
+        (now - self.last_update).as_millis() as f64 / 1000.0
     }
 }

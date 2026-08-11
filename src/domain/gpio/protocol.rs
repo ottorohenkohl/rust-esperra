@@ -6,7 +6,7 @@ pub enum OutputMessage {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LightMessage {
     SetActive(bool),
-    BlinkOnce,
+    BlinkTimes(u8),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

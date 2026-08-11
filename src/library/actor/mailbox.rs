@@ -21,12 +21,11 @@ impl<Message: 'static> Mailbox<Message> {
         ActorRef::new(sender)
     }
 
-    pub async fn run<A>(&'static self, mut actor: A) -> !
-    where
-        A: Actor<Message = Message>,
-    {
+    pub async fn run<A>(&'static self, mut actor: A) where A: Actor<Message = Message> {
         loop {
-            actor.handle(self.channel.receive().await).await;
+            let message = self.channel.receive().await;
+
+            actor.handle(message).await;
         }
     }
 }

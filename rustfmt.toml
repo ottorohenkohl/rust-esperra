@@ -1,2 +1,1 @@
-max_width = 8000
-use_small_heuristics = "Max"
+disable_all_formatting = true

@@ -22,11 +22,7 @@ impl<Message: 'static> ActorRef<Message> {
         let _ = self.sender.try_send(message);
     }
 
-    pub fn subscriber<PublishedMessage>(&self) -> Subscriber<PublishedMessage>
-    where
-        Message: From<PublishedMessage>,
-        PublishedMessage: 'static,
-    {
+    pub fn subscriber<PublishedMessage>(&self) -> Subscriber<PublishedMessage> where Message: From<PublishedMessage>, PublishedMessage: 'static {
         let actor_ref = self.clone();
 
         let tell = Arc::new(move |message| actor_ref.tell(Message::from(message)));

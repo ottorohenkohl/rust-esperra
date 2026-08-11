@@ -22,10 +22,13 @@ impl LightPort for GpioLightPort<'_> {
         Ok(())
     }
 
-    async fn blink(&mut self, duration: Duration) -> Result<(), Error> {
-        self.pin.set_high();
-        Timer::after(duration).await;
-        self.pin.set_low();
+    async fn blink(&mut self, times: u8) -> Result<(), Error> {
+        for _ in 0..times {
+            self.pin.set_high();
+            Timer::after(Duration::from_millis(500)).await;
+            self.pin.set_low();
+        }
+
         Ok(())
     }
 }
