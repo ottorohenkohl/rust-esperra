@@ -2,6 +2,8 @@ use alloc::sync::Arc;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, DynamicSender};
 
+pub const CAPACITY: usize = 8;
+
 pub trait Actor {
     type Message;
 
@@ -49,11 +51,11 @@ impl<Message> Subscriber<Message> {
     }
 }
 
-pub struct Mailbox<Message, const CAPACITY: usize> {
+pub struct Mailbox<Message> {
     channel: Channel<CriticalSectionRawMutex, Message, CAPACITY>,
 }
 
-impl<Message: 'static, const CAPACITY: usize> Mailbox<Message, CAPACITY> {
+impl<Message: 'static> Mailbox<Message> {
     pub const fn new() -> Self {
         Self { channel: Channel::new() }
     }

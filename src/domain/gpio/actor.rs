@@ -1,7 +1,7 @@
 use super::port::{LightPort, TemperatureSensorPort};
 use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
 
-use crate::library::actor::{Actor, Subscriber};
+use crate::library::actor::{Actor, CAPACITY, Subscriber};
 use crate::library::error::Error;
 
 use embassy_time::Duration;
@@ -38,7 +38,7 @@ where
 
 pub struct TemperatureActor<P> {
     temperature_port: P,
-    subscribers: Vec<Subscriber<TemperatureSensorResponse>, 4>,
+    subscribers: Vec<Subscriber<TemperatureSensorResponse>, CAPACITY>,
 }
 
 impl<P> TemperatureActor<P> {
