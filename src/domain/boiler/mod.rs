@@ -1,4 +1,4 @@
 pub mod actor;
-pub mod pid;
+pub mod protocol;
 
-pub use actor::{BoilerActor, BoilerMessage};
+mod service;

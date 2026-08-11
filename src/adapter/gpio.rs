@@ -1,5 +1,6 @@
-use crate::domain::gpio::output::{LightPort, OutputMessage};
 use crate::domain::gpio::port::InputPort;
+use crate::domain::gpio::port::LightPort;
+use crate::domain::gpio::protocol::OutputMessage;
 use crate::library::actor::Actor;
 use crate::library::error::Error;
 use embassy_time::{Duration, Timer};

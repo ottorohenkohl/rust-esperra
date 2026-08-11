@@ -1,4 +1,4 @@
-use crate::domain::gpio::sensor::TemperaturePort;
+use crate::domain::gpio::port::TemperatureSensorPort;
 use crate::library::error::Error;
 use embassy_time::{Duration, Timer};
 use esp_hal::delay::Delay;
@@ -27,7 +27,7 @@ impl<'d> Ds18b20TemperaturePort<'d> {
     }
 }
 
-impl TemperaturePort for Ds18b20TemperaturePort<'_> {
+impl TemperatureSensorPort for Ds18b20TemperaturePort<'_> {
     async fn read_temperature(&mut self) -> Result<f64, Error> {
         let mut delay = Delay::new();
         let resolution = self.sensor.measure_temperature(&mut self.bus, &mut delay).map_err(|_| Error)?;
