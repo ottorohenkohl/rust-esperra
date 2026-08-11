@@ -28,7 +28,7 @@ const TEMPERATURE_MEASUREMENT_INTERVAL: Duration = Duration::from_secs(1);
 
 static BOILER_MAILBOX: Mailbox<BoilerMessage, 4> = Mailbox::new();
 static SENSOR_MAILBOX: Mailbox<TemperatureSensorMessage, 1> = Mailbox::new();
-static HEATING_ELEMENT_MAILBOX: Mailbox<OutputMessage, 1> = Mailbox::new();
+static HEATING_ELEMENT_MAILBOX: Mailbox<OutputMessage, 8> = Mailbox::new();
 
 esp_bootloader_esp_idf::esp_app_desc!();
 

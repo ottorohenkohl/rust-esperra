@@ -28,7 +28,6 @@ where
     fn should_heat(&mut self, temperature: f64) -> bool {
         let heater_options = self.config.read_heater_options();
         let cycle_elapsed_ms = self.cycle_start.elapsed().as_millis();
-        let pid_percentage = self.pid_service.compute(heater_options.target_temperature, temperature);
 
         if cycle_elapsed_ms >= heater_options.heating_cycle_ms {
             self.cycle_start = Instant::now();
@@ -37,6 +36,8 @@ where
         if temperature < heater_options.target_temperature - heater_options.boost_intervall_size {
             return true;
         }
+
+        let pid_percentage = self.pid_service.compute(heater_options.target_temperature, temperature);
 
         (cycle_elapsed_ms as f64) < heater_options.heating_cycle_ms as f64 * pid_percentage / 100.0
     }
