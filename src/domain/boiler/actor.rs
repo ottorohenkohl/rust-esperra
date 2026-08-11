@@ -23,15 +23,18 @@ impl From<TemperatureReading> for BoilerMessage {
     }
 }
 
-pub struct BoilerActor {
-    config: Arc<dyn ConfigPort>,
-    pid_service: PidService,
+pub struct BoilerActor<C> {
+    config: Arc<C>,
+    pid_service: PidService<C>,
     heating_element: ActorRef<OutputMessage>,
     cycle_start: Instant,
 }
 
-impl BoilerActor {
-    pub fn new(config: Arc<dyn ConfigPort>, heating_element: ActorRef<OutputMessage>) -> Self {
+impl<C> BoilerActor<C>
+where
+    C: ConfigPort,
+{
+    pub fn new(config: Arc<C>, heating_element: ActorRef<OutputMessage>) -> Self {
         let pid_service = PidService::new(Arc::clone(&config));
         Self { config, pid_service, heating_element, cycle_start: Instant::now() }
     }
@@ -55,7 +58,10 @@ impl BoilerActor {
     }
 }
 
-impl Actor for BoilerActor {
+impl<C> Actor for BoilerActor<C>
+where
+    C: ConfigPort,
+{
     type Message = BoilerMessage;
 
     async fn handle(&mut self, message: Self::Message) {

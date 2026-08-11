@@ -5,12 +5,13 @@ extern crate alloc;
 
 use adapter::config::DefaultConfigPort;
 use adapter::gpio::HeatingElementActor;
-use adapter::sensor::TemperatureSensorActor;
+use adapter::sensor::Ds18b20TemperaturePort;
 use alloc::sync::Arc;
 use core::panic::PanicInfo;
 use domain::boiler::BoilerActor;
 use domain::boiler::BoilerMessage;
 use domain::gpio::output::OutputMessage;
+use domain::gpio::sensor::TemperatureActor;
 use domain::gpio::sensor::TemperatureSensorMessage;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
@@ -48,9 +49,10 @@ async fn main(_spawner: Spawner) -> ! {
     let boiler_ref = BOILER_MAILBOX.actor_ref();
     let temperature_sensor_ref = SENSOR_MAILBOX.actor_ref();
     let heating_element_ref = HEATING_ELEMENT_MAILBOX.actor_ref();
-    let config: Arc<dyn domain::config::port::ConfigPort> = Arc::new(DefaultConfigPort::new());
+    let config = Arc::new(DefaultConfigPort::new());
     let boiler = BoilerActor::new(config, heating_element_ref);
-    let mut temperature_sensor = TemperatureSensorActor::new(peripherals.GPIO4).unwrap();
+    let temperature_port = Ds18b20TemperaturePort::new(peripherals.GPIO4).unwrap();
+    let mut temperature_sensor = TemperatureActor::new(temperature_port);
     assert!(temperature_sensor.subscribe(boiler_ref.subscriber()).is_ok());
     let heating_element = HeatingElementActor::new(peripherals.GPIO5);
 
