@@ -3,7 +3,8 @@ use super::service::PidService;
 
 use crate::domain::config::port::ConfigPort;
 use crate::domain::gpio::protocol::OutputMessage;
-use crate::library::actor::{Actor, ActorRef};
+use crate::library::actor::actor::Actor;
+use crate::library::actor::actor_ref::ActorRef;
 
 use alloc::sync::Arc;
 use embassy_time::Instant;

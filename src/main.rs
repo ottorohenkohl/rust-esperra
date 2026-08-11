@@ -18,7 +18,8 @@ use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::timer::timg::TimerGroup;
-use library::actor::{ActorRef, Mailbox};
+use library::actor::actor_ref::ActorRef;
+use library::actor::mailbox::Mailbox;
 
 mod adapter;
 mod domain;

@@ -1,7 +1,8 @@
 use super::port::{LightPort, TemperatureSensorPort};
 use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
 
-use crate::library::actor::{Actor, CAPACITY, Subscriber};
+use crate::library::actor::actor::Actor;
+use crate::library::actor::subscriber::Subscriber;
 use crate::library::error::Error;
 
 use embassy_time::Duration;
@@ -27,10 +28,10 @@ where
     async fn handle(&mut self, message: Self::Message) {
         match message {
             LightMessage::SetActive(active) => {
-                self.light_port.set_active(active).await;
+                let _ = self.light_port.set_active(active).await;
             }
             LightMessage::BlinkOnce => {
-                self.light_port.blink(self.blink_duration).await;
+                let _ = self.light_port.blink(self.blink_duration).await;
             }
         }
     }
@@ -38,7 +39,7 @@ where
 
 pub struct TemperatureActor<P> {
     temperature_port: P,
-    subscribers: Vec<Subscriber<TemperatureSensorResponse>, CAPACITY>,
+    subscribers: Vec<Subscriber<TemperatureSensorResponse>, 8>,
 }
 
 impl<P> TemperatureActor<P> {
