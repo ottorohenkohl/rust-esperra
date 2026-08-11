@@ -1,8 +1,8 @@
 use super::port::{LightPort, TemperatureSensorPort};
 use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
 
-use crate::library::actor::actor::Actor;
-use crate::library::actor::subscriber::Subscriber;
+use crate::library::actor::Actor;
+use crate::library::actor::reference::Subscriber;
 use crate::library::error::Error;
 
 use embassy_time::Duration;

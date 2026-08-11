@@ -1,4 +1,8 @@
-pub mod actor;
-pub mod actor_ref;
 pub mod mailbox;
-pub mod subscriber;
+pub mod reference;
+
+pub trait Actor {
+    type Message;
+
+    async fn handle(&mut self, message: Self::Message);
+}

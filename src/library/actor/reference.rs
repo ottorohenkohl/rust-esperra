@@ -1,5 +1,3 @@
-use super::subscriber::Subscriber;
-
 use alloc::sync::Arc;
 use embassy_sync::channel::DynamicSender;
 
@@ -16,6 +14,10 @@ impl<Message: 'static> Clone for ActorRef<Message> {
 }
 
 impl<Message: 'static> ActorRef<Message> {
+    pub fn new(sender: DynamicSender<'static, Message>) -> Self {
+        ActorRef { sender }
+    }
+
     pub fn tell(&self, message: Message) {
         let _ = self.sender.try_send(message);
     }
@@ -30,5 +32,23 @@ impl<Message: 'static> ActorRef<Message> {
         let tell = Arc::new(move |message| actor_ref.tell(Message::from(message)));
 
         Subscriber { tell }
+    }
+}
+
+pub struct Subscriber<Message> {
+    tell: Arc<dyn Fn(Message)>,
+}
+
+impl<Message> Clone for Subscriber<Message> {
+    fn clone(&self) -> Self {
+        let tell = Arc::clone(&self.tell);
+
+        Self { tell }
+    }
+}
+
+impl<Message> Subscriber<Message> {
+    pub fn tell(&self, message: Message) {
+        (self.tell)(message);
     }
 }

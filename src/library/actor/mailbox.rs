@@ -1,5 +1,5 @@
-use super::actor::Actor;
-use super::actor_ref::ActorRef;
+use super::Actor;
+use super::reference::ActorRef;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -18,7 +18,7 @@ impl<Message: 'static> Mailbox<Message> {
     pub fn actor_ref(&'static self) -> ActorRef<Message> {
         let sender = self.channel.dyn_sender();
 
-        ActorRef { sender }
+        ActorRef::new(sender)
     }
 
     pub async fn run<A>(&'static self, mut actor: A) -> !
