@@ -7,6 +7,7 @@ pub trait ConfigPort {
 pub struct HeaterOptions {
     pub heating_cycle_ms: u64,
     pub target_temperature: f64,
+    pub target_temperature_interval: f64,
     pub boost_intervall_size: f64,
 }
 

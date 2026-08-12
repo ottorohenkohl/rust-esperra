@@ -6,7 +6,7 @@ use esp_hal::peripherals::FLASH;
 
 const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const MAGIC_RECORD: u16 = 2307;
-const RECORD_SIZE: usize = 52;
+const RECORD_SIZE: usize = 60;
 
 pub struct FlashConfigPort<'d> {
     storage: FlashStorage<'d>,
@@ -30,13 +30,14 @@ impl<'d> FlashConfigPort<'d> {
             heater_options = HeaterOptions {
                 heating_cycle_ms: Self::read_u64(&record, 4),
                 target_temperature: Self::read_f64(&record, 12),
-                boost_intervall_size: Self::read_f64(&record, 20),
+                target_temperature_interval: Self::read_f64(&record, 20),
+                boost_intervall_size: Self::read_f64(&record, 28),
             };
 
             pid_gains = PidGains {
-                k_proportional: Self::read_f64(&record, 28),
-                k_intergral: Self::read_f64(&record, 36),
-                k_derivative: Self::read_f64(&record, 44),
+                k_proportional: Self::read_f64(&record, 36),
+                k_intergral: Self::read_f64(&record, 44),
+                k_derivative: Self::read_f64(&record, 52),
             };
         }
 
@@ -61,10 +62,11 @@ impl<'d> FlashConfigPort<'d> {
 
         record[4..12].copy_from_slice(&heater_options.heating_cycle_ms.to_le_bytes());
         record[12..20].copy_from_slice(&heater_options.target_temperature.to_le_bytes());
-        record[20..28].copy_from_slice(&heater_options.boost_intervall_size.to_le_bytes());
-        record[28..36].copy_from_slice(&pid_gains.k_proportional.to_le_bytes());
-        record[36..44].copy_from_slice(&pid_gains.k_intergral.to_le_bytes());
-        record[44..52].copy_from_slice(&pid_gains.k_derivative.to_le_bytes());
+        record[20..28].copy_from_slice(&heater_options.target_temperature_interval.to_le_bytes());
+        record[28..36].copy_from_slice(&heater_options.boost_intervall_size.to_le_bytes());
+        record[36..44].copy_from_slice(&pid_gains.k_proportional.to_le_bytes());
+        record[44..52].copy_from_slice(&pid_gains.k_intergral.to_le_bytes());
+        record[52..60].copy_from_slice(&pid_gains.k_derivative.to_le_bytes());
 
         record
     }
@@ -82,7 +84,7 @@ impl<'d> FlashConfigPort<'d> {
     }
 
     fn default_heater_options() -> HeaterOptions {
-        HeaterOptions { heating_cycle_ms: 100_000, target_temperature: 65.0, boost_intervall_size: 5.0 }
+        HeaterOptions { heating_cycle_ms: 100_000, target_temperature: 65.0, target_temperature_interval: 0.5, boost_intervall_size: 5.0 }
     }
 
     fn default_pid_gains() -> PidGains {

@@ -6,16 +6,15 @@ use crate::library::actor::Actor;
 use crate::library::actor::reference::Subscriber;
 use crate::library::error::Error;
 
-use alloc::sync::Arc;
 use heapless::Vec;
 
 pub struct LightActor<P, T> {
     output_port: P,
-    timer_port: Arc<T>,
+    timer_port: T,
 }
 
 impl<P, T> LightActor<P, T> {
-    pub fn new(output_port: P, timer_port: Arc<T>) -> Self {
+    pub fn new(output_port: P, timer_port: T) -> Self {
         Self { output_port, timer_port }
     }
 }

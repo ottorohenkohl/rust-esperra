@@ -1,7 +1,7 @@
 use crate::library::error::Error;
 
 pub trait InputPort {
-    fn powered_state(&mut self) -> bool;
+    fn powered_state(&self) -> bool;
 }
 
 pub trait OutputPort {

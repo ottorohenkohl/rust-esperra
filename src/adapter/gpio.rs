@@ -49,7 +49,7 @@ impl<'d> EspInputPort<'d> {
 }
 
 impl InputPort for EspInputPort<'_> {
-    fn powered_state(&mut self) -> bool {
+    fn powered_state(&self) -> bool {
         self.pin.is_high()
     }
 }

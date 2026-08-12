@@ -53,6 +53,29 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
 
         (cycle_elapsed_ms as f64) < heater_options.heating_cycle_ms as f64 * pid_percentage / 100.0
     }
+
+    async fn switch_heater(&mut self) {
+        if self.is_active {
+            self.update_cycle();
+
+            let should_heat = self.should_heat();
+            let heater_options = self.config.read_heater_options();
+
+            self.heating_output_port.set_active(self.is_active && should_heat).await;
+
+            let lower_bound = heater_options.target_temperature - heater_options.target_temperature_interval;
+            let upper_bound = heater_options.target_temperature + heater_options.target_temperature_interval;
+
+            match self.current_temperature {
+                current_temperature if (lower_bound..upper_bound).contains(&current_temperature) => {
+                    self.power_light_actor.tell(LightMessage::SetActive(true));
+                }
+                _ => {
+                    self.power_light_actor.tell(LightMessage::BlinkTimes(1));
+                }
+            }
+        }
+    }
 }
 
 impl<C, H> Actor for BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
@@ -61,11 +84,7 @@ impl<C, H> Actor for BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
     async fn handle(&mut self, message: Self::Message) {
         match message {
             BoilerMessage::SwitchHeater => {
-                self.update_cycle();
-
-                let shoult_heat = self.should_heat();
-
-                self.heating_output_port.set_active(self.is_active && shoult_heat).await;
+                self.switch_heater();
             }
             BoilerMessage::SafetyShutdown => {
                 self.status_light_actor.tell(LightMessage::BlinkTimes(3));
