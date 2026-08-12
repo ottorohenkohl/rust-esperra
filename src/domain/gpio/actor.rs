@@ -1,20 +1,21 @@
 use super::port::{OutputPort, TemperatureSensorPort};
 use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
 
-use crate::domain::gpio::port::TimerPort;
+use crate::domain::clock::port::TimerPort;
 use crate::library::actor::Actor;
 use crate::library::actor::reference::Subscriber;
 use crate::library::error::Error;
 
+use alloc::sync::Arc;
 use heapless::Vec;
 
 pub struct LightActor<P, T> {
     output_port: P,
-    timer_port: T,
+    timer_port: Arc<T>,
 }
 
 impl<P, T> LightActor<P, T> {
-    pub fn new(output_port: P, timer_port: T) -> Self {
+    pub fn new(output_port: P, timer_port: Arc<T>) -> Self {
         Self { output_port, timer_port }
     }
 }

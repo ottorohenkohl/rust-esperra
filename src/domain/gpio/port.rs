@@ -12,7 +12,3 @@ pub trait OutputPort {
 pub trait TemperatureSensorPort {
     async fn read_temperature(&mut self) -> Result<f64, Error>;
 }
-
-pub trait TimerPort {
-    async fn wait_for(&self, millis: u64);
-}
