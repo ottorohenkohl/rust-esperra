@@ -32,18 +32,19 @@ release:firmware:
   before_script:
     - apk add --no-cache curl jq openssl
   script:
-    - VERSION="${CI_COMMIT_TAG#v}"
-    - test "$VERSION" = "$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)"/\1/p' Cargo.toml | head -1)"
-    - SIZE="$(wc -c < firmware-ota.bin | tr -d ' ')"
-    - SHA256="$(sha256sum firmware-ota.bin | cut -d' ' -f1)"
-    - PACKAGE_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/$FIRMWARE_PACKAGE/$VERSION"
-    - PUBLIC_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/$FIRMWARE_PACKAGE/$VERSION/firmware-ota.bin"
-    - printf '%s\n%s\n%s\n%s' "$VERSION" "$PUBLIC_URL" "$SIZE" "$SHA256" > manifest.payload
-    - printf '%s' "$ESPERRA_UPDATE_SIGNING_KEY" | base64 -d > signing-key.pem
-    - openssl pkeyutl -sign -rawin -inkey signing-key.pem -in manifest.payload | od -An -vtx1 | tr -d ' \n' > signature.hex
-    - printf '{"version":"%s","url":"%s","size":%s,"sha256":"%s","signature":"%s"}\n' "$VERSION" "$PUBLIC_URL" "$SIZE" "$SHA256" "$(cat signature.hex)" > manifest.json
-    - curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file firmware-ota.bin "$PACKAGE_URL/firmware-ota.bin"
-    - curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file manifest.json "$PACKAGE_URL/manifest.json"
-    - LATEST_ID="$(curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages?package_type=generic&package_name=$FIRMWARE_PACKAGE&package_version=latest" | jq -r '.[0].id // empty')"
-    - if [ -n "$LATEST_ID" ]; then curl --fail --request DELETE --header "JOB-TOKEN: $CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/$LATEST_ID"; fi
-    - curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file manifest.json "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/$FIRMWARE_PACKAGE/latest/manifest.json"
+    - |
+      VERSION="${CI_COMMIT_TAG#v}"
+      test "$VERSION" = "$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+      SIZE="$(wc -c < firmware-ota.bin | tr -d ' ')"
+      SHA256="$(sha256sum firmware-ota.bin | cut -d' ' -f1)"
+      PACKAGE_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/$FIRMWARE_PACKAGE/$VERSION"
+      PUBLIC_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/$FIRMWARE_PACKAGE/$VERSION/firmware-ota.bin"
+      printf '%s\n%s\n%s\n%s' "$VERSION" "$PUBLIC_URL" "$SIZE" "$SHA256" > manifest.payload
+      printf '%s' "$ESPERRA_UPDATE_SIGNING_KEY" | base64 -d > signing-key.pem
+      openssl pkeyutl -sign -rawin -inkey signing-key.pem -in manifest.payload | od -An -vtx1 | tr -d ' \n' > signature.hex
+      printf '{"version":"%s","url":"%s","size":%s,"sha256":"%s","signature":"%s"}\n' "$VERSION" "$PUBLIC_URL" "$SIZE" "$SHA256" "$(cat signature.hex)" > manifest.json
+      curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file firmware-ota.bin "$PACKAGE_URL/firmware-ota.bin"
+      curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file manifest.json "$PACKAGE_URL/manifest.json"
+      LATEST_ID="$(curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages?package_type=generic&package_name=$FIRMWARE_PACKAGE&package_version=latest" | jq -r '.[0].id // empty')"
+      if [ -n "$LATEST_ID" ]; then curl --fail --request DELETE --header "JOB-TOKEN: $CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/$LATEST_ID"; fi
+      curl --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file manifest.json "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/$FIRMWARE_PACKAGE/latest/manifest.json"
