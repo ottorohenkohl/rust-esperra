@@ -3,6 +3,8 @@
 
 extern crate alloc;
 
+use esp_backtrace as _;
+
 use crate::domain::brewing::actor::BrewActor;
 use crate::domain::controls::actor::CircuitActor;
 use crate::domain::controls::protocol::CircuitMessage;
@@ -24,6 +26,7 @@ use esp_hal::clock::CpuClock;
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::gpio::Pull;
 use esp_hal::timer::timg::TimerGroup;
+use esp_storage::FlashStorage;
 use heapless::Vec;
 use library::actor::mailbox::Mailbox;
 
@@ -32,6 +35,7 @@ use embassy_futures::join::join3;
 mod adapter;
 mod domain;
 mod library;
+mod update;
 
 const TICK_INTERVALL: Duration = Duration::from_millis(100);
 
@@ -45,7 +49,7 @@ static TEMPERATURE_SENSOR_ACTOR_MAILBOX: Mailbox<TemperatureSensorMessage, 1> = 
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
     esp_alloc::heap_allocator!(size: 64 * 1024);
 
@@ -54,7 +58,9 @@ async fn main(_spawner: Spawner) {
 
     esp_rtos::start(TimerGroup::new(peripherals.TIMG0).timer0, SoftwareInterruptControl::new(peripherals.SW_INTERRUPT).software_interrupt0);
 
-    let config_port = Arc::new(FlashConfigPort::new(peripherals.FLASH).unwrap());
+    let mut flash = FlashStorage::new(peripherals.FLASH);
+    update::initialize(&mut flash);
+    let config_port = Arc::new(FlashConfigPort::new(&mut flash).unwrap());
     let heating_output_port = EspOutputPort::new(peripherals.GPIO10);
     let status_light_output_port = EspOutputPort::new(peripherals.GPIO11);
     let power_light_output_port = EspOutputPort::new(peripherals.GPIO12);
@@ -75,6 +81,8 @@ async fn main(_spawner: Spawner) {
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), CIRCUIT_ACTOR_MAILBOX.run(circuit_actor));
     let actor_group_2 = join3(POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor), TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor));
+
+    update::start(peripherals.WIFI, flash, BOILER_ACTOR_MAILBOX.actor_ref(), BREW_ACTOR_MAILBOX.actor_ref(), spawner);
 
     join3(actor_group_1, actor_group_2, event_loop()).await;
 }

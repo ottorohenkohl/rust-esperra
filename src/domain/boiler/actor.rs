@@ -84,9 +84,11 @@ impl<C, H> Actor for BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
     async fn handle(&mut self, message: Self::Message) {
         match message {
             BoilerMessage::SwitchHeater => {
-                self.switch_heater();
+                self.switch_heater().await;
             }
             BoilerMessage::SafetyShutdown => {
+                self.is_active = false;
+                self.heating_output_port.set_active(false).await;
                 self.status_light_actor.tell(LightMessage::BlinkTimes(3));
             }
             BoilerMessage::UpdateTemperature { measured_temperature } => {

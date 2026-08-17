@@ -92,10 +92,7 @@ cargo run --release   # uses the runner configured in .cargo/config.toml (espfla
 
 ### Flashing from your local machine (recommended)
 
-Every push to `main` builds the firmware in CI and produces a single merged, flashable
-`firmware.bin` as a pipeline artifact — download it from the `build:firmware` job. On
-your machine, install just `espflash` (`brew install espflash` / `cargo install espflash`)
-or `esptool` (`pip install esptool`) — no Rust toolchain needed — and flash:
+Every push to `main` builds both a merged `firmware.bin` for initial/recovery flashing and an application-only `firmware-ota.bin`. Download `firmware.bin` from the `build:firmware` job for the first installation. On your machine, install just `espflash` (`brew install espflash` / `cargo install espflash`) or `esptool` (`pip install esptool`) - no Rust toolchain needed - and flash:
 
 ```bash
 espflash flash --format raw firmware.bin /dev/tty.usbserial-XXXX
@@ -103,10 +100,32 @@ espflash flash --format raw firmware.bin /dev/tty.usbserial-XXXX
 esptool.py --chip esp32s3 write_flash 0x0 firmware.bin
 ```
 
+## OTA updates
+
+The firmware checks GitLab every six hours and installs newer tagged releases into the inactive OTA partition. Before writing flash it stops brewing and sends a boiler safety shutdown. The manifest is authenticated with Ed25519 and the downloaded application image is checked against its SHA-256 digest.
+
+The ESP32-S3 module must provide at least 8 MB flash. Flash `firmware.bin` once over USB to install the bootloader and `partitions.csv`; subsequent releases use `firmware-ota.bin`.
+
+Configure these protected GitLab CI/CD variables before building:
+
+- `ESPERRA_WIFI_SSID` and `ESPERRA_WIFI_PASSWORD` - Wi-Fi credentials compiled into the firmware.
+- `ESPERRA_GITLAB_TOKEN` - read-only project access token used by the device for this private repository.
+- `ESPERRA_UPDATE_MANIFEST_URL` - `https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware/latest/manifest.json`.
+- `ESPERRA_UPDATE_PUBLIC_KEY` - Ed25519 public key as 64 hexadecimal characters.
+- `ESPERRA_UPDATE_SIGNING_KEY` - matching private PEM key, base64-encoded; needed only by tagged release jobs.
+
+Create the key pair outside GitLab, retain a protected backup of the private key, and store only the public key in device builds:
+
+```bash
+openssl genpkey -algorithm ED25519 -out update-signing-key.pem
+openssl pkey -in update-signing-key.pem -pubout -outform DER | tail -c 32 | od -An -vtx1 | tr -d ' \n'
+base64 < update-signing-key.pem | tr -d '\n'
+```
+
+A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces the `latest` manifest. Because the repository is private, the firmware sends `ESPERRA_GITLAB_TOKEN` as a `PRIVATE-TOKEN` header.
+
+The precompiled bootloader emitted by `espflash` does not enable automatic rollback. The updater still uses two slots, activates only a fully downloaded and verified image, and confirms the selected slot on boot. Actual bootloader-driven rollback requires building and supplying a custom ESP-IDF bootloader with rollback enabled.
+
 ## CI
 
-`.gitlab-ci.yml` runs on every push:
-- `build:firmware` – uses the pinned `espressif/idf-rust:esp32s3_1.88.0.0` image, which
-  already ships the Xtensa Rust toolchain and `espflash` preinstalled. Sources
-  `export-esp.sh`, then runs `cargo build --release` and merges the ELF into a flat
-  `firmware.bin` via `espflash save-image --merge`, publishing it as an artifact.
+`.gitlab-ci.yml` builds both the merged recovery image and the application-only OTA image on every push. A semantic-version tag additionally signs the manifest and publishes immutable firmware through GitLab's Generic Package Registry.

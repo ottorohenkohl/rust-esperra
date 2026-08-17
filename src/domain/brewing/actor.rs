@@ -20,11 +20,11 @@ impl<P, V> Actor for BrewActor<P, V> where P: OutputPort, V: OutputPort {
     async fn handle(&mut self, message: Self::Message) {
         match message {
             BrewMessage::SetBrewing(active) => {
-                self.pump_output_port.set_active(active);
-                self.valve_output_port.set_active(active);
+                self.pump_output_port.set_active(active).await;
+                self.valve_output_port.set_active(active).await;
             }
             BrewMessage::SetPaused(active) => {
-                self.pump_output_port.set_active(!active);
+                self.pump_output_port.set_active(!active).await;
             }
         }
     }
