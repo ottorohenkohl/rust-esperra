@@ -10,7 +10,7 @@ build:firmware:
   image: espressif/idf-rust:esp32s3_1.93.0.0
   before_script:
     - . "$HOME/export-esp.sh"
-    - python3 -m pip install --user cmake
+    - python3 -m pip install --user --break-system-packages cmake
     - export PATH="$HOME/.local/bin:$(dirname "$(command -v xtensa-esp32s3-elf-gcc)"):$PATH"
   script:
     - cargo build --release
