@@ -109,10 +109,9 @@ The ESP32-S3 module must provide at least 8 MB flash. Flash `firmware.bin` once 
 Configure these protected GitLab CI/CD variables before building:
 
 - `ESPERRA_WIFI_SSID` and `ESPERRA_WIFI_PASSWORD` - Wi-Fi credentials compiled into the firmware.
-- `ESPERRA_GITLAB_TOKEN` - read-only project access token used by the device for this private repository.
 - `ESPERRA_UPDATE_MANIFEST_URL` - `https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware/latest/manifest.json`.
 
-A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces the `latest` manifest. Because the repository is private, the firmware sends `ESPERRA_GITLAB_TOKEN` as a `PRIVATE-TOKEN` header. Keep `src/update/isrg-root-x1.pem` current if the GitLab certificate chain changes to a different root CA.
+A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces the `latest` manifest. Firmware downloads are public and require no GitLab credentials. Keep `src/update/isrg-root-x1.pem` current if the GitLab certificate chain changes to a different root CA.
 
 The precompiled bootloader emitted by `espflash` does not enable automatic rollback. The updater still uses two slots, activates only a fully downloaded and verified image, and confirms the selected slot on boot. Actual bootloader-driven rollback requires building and supplying a custom ESP-IDF bootloader with rollback enabled.
 

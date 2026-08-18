@@ -39,8 +39,7 @@ const NTP_SERVER: &str = "pool.ntp.org";
 const MANIFEST_URL: &str = match option_env!("ESPERRA_UPDATE_MANIFEST_URL") { Some(value) => value, None => "" };
 const WIFI_SSID: &str = match option_env!("ESPERRA_WIFI_SSID") { Some(value) => value, None => "" };
 const WIFI_PASSWORD: &str = match option_env!("ESPERRA_WIFI_PASSWORD") { Some(value) => value, None => "" };
-const GITLAB_TOKEN: &str = match option_env!("ESPERRA_GITLAB_TOKEN") { Some(value) => value, None => "" };
-const UPDATE_HEADERS: [(&str, &str); 2] = [("Connection", "close"), ("PRIVATE-TOKEN", GITLAB_TOKEN)];
+const UPDATE_HEADERS: [(&str, &str); 1] = [("Connection", "close")];
 const ROOT_CA: &CStr = match CStr::from_bytes_with_nul(concat!(include_str!("isrg-root-x1.pem"), "\0").as_bytes()) {
     Ok(certificate) => certificate,
     Err(_) => panic!("invalid OTA root CA"),
