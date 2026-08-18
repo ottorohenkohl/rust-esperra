@@ -10,8 +10,8 @@ build:firmware:
   image: espressif/idf-rust:esp32s3_1.93.0.0
   before_script:
     - . "$HOME/export-esp.sh"
-    - export PATH="$(dirname "$(command -v xtensa-esp32s3-elf-gcc)"):$PATH"
-    - apt-get update && apt-get install -y --no-install-recommends cmake && rm -rf /var/lib/apt/lists/*
+    - python3 -m pip install --user cmake
+    - export PATH="$HOME/.local/bin:$(dirname "$(command -v xtensa-esp32s3-elf-gcc)"):$PATH"
   script:
     - cargo build --release
     - espflash save-image --chip esp32s3 --flash-size 8mb --partition-table partitions.csv --target-app-partition factory --merge target/xtensa-esp32s3-none-elf/release/esperra firmware.bin
