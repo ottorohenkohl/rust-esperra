@@ -1,7 +1,7 @@
 [package]
 edition      = "2024"
 name         = "esperra"
-rust-version = "1.88"
+rust-version = "1.91"
 version      = "0.1.0"
 
 [[bin]]
@@ -11,7 +11,7 @@ path = "./src/main.rs"
 [dependencies]
 embassy-executor        = { version = "0.10.0", features = ["log"] }
 embassy-futures         = "0.1.2"
-embassy-net             = { version = "0.7.1", features = ["dhcpv4", "dns", "medium-ethernet", "tcp"] }
+embassy-net             = { version = "0.9.1", features = ["dhcpv4", "dns", "medium-ethernet", "proto-ipv4", "tcp", "udp"] }
 embassy-sync            = "0.8.0"
 embassy-time            = { version = "0.5.0", features = ["log"] }
 esp-bootloader-esp-idf  = { version = "0.5.0", features = ["esp32s3", "log-04"] }
@@ -23,17 +23,20 @@ esp-rtos                = { version = "0.3.0", features = ["embassy", "esp-alloc
 esp-storage             = { version = "0.9.0", features = ["esp32s3"] }
 
 critical-section        = "1.2.0"
-ed25519-dalek           = { version = "2.2.0", default-features = false, features = ["fast"] }
-embedded-io-async       = "0.6.1"
+embedded-io-async       = "0.7.0"
 embedded-storage        = "0.3.1"
 esp-alloc               = "0.10.0"
-heapless                = { version = "0.8.0", features = ["serde"] }
+heapless                = { version = "0.9.1", features = ["serde"] }
 log                     = "0.4.28"
+mbedtls-rs              = { version = "0.1.0", features = ["embassy-time", "esp32s3", "hook-wall-clock", "log", "use-gcc"] }
 onewire                 = "0.4.0"
-reqwless                = { version = "0.13.0", default-features = false, features = ["embedded-tls", "log"] }
+rand_core               = "0.10.1"
+reqwless                = { git = "https://github.com/drogue-iot/reqwless.git", rev = "b761705cc654e6f31bc064183e219aa09b33968a", default-features = false, features = ["log", "mbedtls-rs"] }
 serde                   = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde-json-core         = "0.6.0"
 sha2                    = { version = "0.10.9", default-features = false }
+sntpc                   = "0.11.0"
+sntpc-net-embassy       = "0.11.0"
 static_cell             = "2.1.1"
 
 [profile.dev]

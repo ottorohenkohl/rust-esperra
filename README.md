@@ -102,7 +102,7 @@ esptool.py --chip esp32s3 write_flash 0x0 firmware.bin
 
 ## OTA updates
 
-The firmware checks GitLab every six hours and installs newer tagged releases into the inactive OTA partition. Before writing flash it stops brewing and sends a boiler safety shutdown. The manifest is authenticated with Ed25519 and the downloaded application image is checked against its SHA-256 digest.
+The firmware checks GitLab every six hours and installs newer tagged releases into the inactive OTA partition. Before writing flash it stops brewing and sends a boiler safety shutdown. It synchronizes the RTC through SNTP, validates GitLab's HTTPS certificate and hostname against the embedded ISRG Root X1 certificate, and checks the downloaded application image against the manifest's SHA-256 digest.
 
 The ESP32-S3 module must provide at least 8 MB flash. Flash `firmware.bin` once over USB to install the bootloader and `partitions.csv`; subsequent releases use `firmware-ota.bin`.
 
@@ -111,21 +111,11 @@ Configure these protected GitLab CI/CD variables before building:
 - `ESPERRA_WIFI_SSID` and `ESPERRA_WIFI_PASSWORD` - Wi-Fi credentials compiled into the firmware.
 - `ESPERRA_GITLAB_TOKEN` - read-only project access token used by the device for this private repository.
 - `ESPERRA_UPDATE_MANIFEST_URL` - `https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware/latest/manifest.json`.
-- `ESPERRA_UPDATE_PUBLIC_KEY` - Ed25519 public key as 64 hexadecimal characters.
-- `ESPERRA_UPDATE_SIGNING_KEY` - matching private PEM key, base64-encoded; needed only by tagged release jobs.
 
-Create the key pair outside GitLab, retain a protected backup of the private key, and store only the public key in device builds:
-
-```bash
-openssl genpkey -algorithm ED25519 -out update-signing-key.pem
-openssl pkey -in update-signing-key.pem -pubout -outform DER | tail -c 32 | od -An -vtx1 | tr -d ' \n'
-base64 < update-signing-key.pem | tr -d '\n'
-```
-
-A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces the `latest` manifest. Because the repository is private, the firmware sends `ESPERRA_GITLAB_TOKEN` as a `PRIVATE-TOKEN` header.
+A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces the `latest` manifest. Because the repository is private, the firmware sends `ESPERRA_GITLAB_TOKEN` as a `PRIVATE-TOKEN` header. Keep `src/update/isrg-root-x1.pem` current if the GitLab certificate chain changes to a different root CA.
 
 The precompiled bootloader emitted by `espflash` does not enable automatic rollback. The updater still uses two slots, activates only a fully downloaded and verified image, and confirms the selected slot on boot. Actual bootloader-driven rollback requires building and supplying a custom ESP-IDF bootloader with rollback enabled.
 
 ## CI
 
-`.gitlab-ci.yml` builds both the merged recovery image and the application-only OTA image on every push. A semantic-version tag additionally signs the manifest and publishes immutable firmware through GitLab's Generic Package Registry.
+`.gitlab-ci.yml` builds both the merged recovery image and the application-only OTA image on every push. A semantic-version tag additionally publishes immutable firmware and its SHA-256 manifest through GitLab's Generic Package Registry.

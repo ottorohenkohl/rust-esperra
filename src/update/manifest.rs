@@ -1,6 +1,5 @@
 use core::cmp::Ordering;
 
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use heapless::String;
 use serde::Deserialize;
 
@@ -10,7 +9,6 @@ pub struct Manifest {
     pub url: String<256>,
     pub size: usize,
     pub sha256: String<64>,
-    pub signature: String<128>,
 }
 
 impl Manifest {
@@ -21,20 +19,11 @@ impl Manifest {
     pub fn expected_hash(&self) -> Result<[u8; 32], Error> {
         decode_hex::<32>(&self.sha256)
     }
-
-    pub fn verify(&self, public_key: &[u8; 32]) -> Result<(), Error> {
-        let key = VerifyingKey::from_bytes(public_key).map_err(|_| Error::InvalidSignature)?;
-        let signature = Signature::from_bytes(&decode_hex::<64>(&self.signature)?);
-        let mut signed = String::<384>::new();
-        core::fmt::write(&mut signed, format_args!("{}\n{}\n{}\n{}", self.version, self.url, self.size, self.sha256)).map_err(|_| Error::InvalidManifest)?;
-        key.verify(signed.as_bytes(), &signature).map_err(|_| Error::InvalidSignature)
-    }
 }
 
 #[derive(Debug)]
 pub enum Error {
     InvalidManifest,
-    InvalidSignature,
 }
 
 pub fn parse(input: &[u8]) -> Result<Manifest, Error> {

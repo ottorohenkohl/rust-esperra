@@ -82,7 +82,16 @@ async fn main(spawner: Spawner) {
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), CIRCUIT_ACTOR_MAILBOX.run(circuit_actor));
     let actor_group_2 = join3(POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor), TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor));
 
-    update::start(peripherals.WIFI, flash, BOILER_ACTOR_MAILBOX.actor_ref(), BREW_ACTOR_MAILBOX.actor_ref(), spawner);
+    update::start(
+        peripherals.WIFI,
+        peripherals.LPWR,
+        peripherals.RNG,
+        peripherals.ADC1,
+        flash,
+        BOILER_ACTOR_MAILBOX.actor_ref(),
+        BREW_ACTOR_MAILBOX.actor_ref(),
+        spawner,
+    );
 
     join3(actor_group_1, actor_group_2, event_loop()).await;
 }
