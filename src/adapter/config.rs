@@ -1,4 +1,5 @@
 use crate::domain::config::port::{ConfigPort, FirmwareInfo, HeaterOptions, PidGains};
+
 use embedded_storage::ReadStorage;
 use esp_storage::{FlashStorage, FlashStorageError};
 use heapless::String;
@@ -6,10 +7,6 @@ use heapless::String;
 const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const MAGIC_RECORD: u16 = 2307;
 const RECORD_SIZE: usize = 348;
-const FIRMWARE_URL_OFFSET: usize = 60;
-const FIRMWARE_URL_SIZE: usize = 256;
-const FIRMWARE_VERSION_OFFSET: usize = FIRMWARE_URL_OFFSET + FIRMWARE_URL_SIZE;
-const FIRMWARE_VERSION_SIZE: usize = 32;
 
 pub struct FlashConfigPort {
     heater_options: HeaterOptions,
@@ -41,11 +38,9 @@ impl FlashConfigPort {
                 k_derivative: Self::read_f64(&record, 52),
             };
 
-            let url = Self::read_string(&record, FIRMWARE_URL_OFFSET, FIRMWARE_URL_SIZE);
-            let old_version = Self::read_string(&record, FIRMWARE_VERSION_OFFSET, FIRMWARE_VERSION_SIZE);
             firmware_info = FirmwareInfo {
-                url: if url.is_empty() { firmware_info.url } else { url },
-                old_version: if old_version.is_empty() { firmware_info.old_version } else { old_version },
+                url: Self::read_string(&record, 60, 256),
+                version: Self::read_string(&record, 316, 32),
             };
         }
 
@@ -67,22 +62,32 @@ impl FlashConfigPort {
     fn read_string<const N: usize>(record: &[u8; RECORD_SIZE], offset: usize, length: usize) -> String<N> {
         let bytes = &record[offset..offset + length];
         let length = bytes.iter().position(|byte| *byte == 0 || *byte == 0xff).unwrap_or(bytes.len());
+
         core::str::from_utf8(&bytes[..length]).ok().and_then(|value| String::try_from(value).ok()).unwrap_or_default()
     }
 
     fn default_heater_options() -> HeaterOptions {
-        HeaterOptions { heating_cycle_ms: 100_000, target_temperature: 65.0, target_temperature_interval: 0.5, boost_intervall_size: 5.0 }
+        let heating_cycle_ms = String::try_from(option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("")).unwrap();
+        let target_temperature = String::try_from(option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE").unwrap_or("")).unwrap();
+        let target_temperature_interval = String::try_from(option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL").unwrap_or("")).unwrap();
+        let boost_intervall_size = String::try_from(option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("")).unwrap();
+
+        HeaterOptions { heating_cycle_ms, target_temperature, target_temperature_interval, boost_intervall_size }
     }
 
     fn default_pid_gains() -> PidGains {
-        PidGains { k_proportional: 1.0, k_intergral: 0.0, k_derivative: 0.0 }
+        let k_proportional = String::try_from(option_env!("ESPERRA_PID_GAINS_K_PROPORTIONAL").unwrap_or("")).unwrap();
+        let k_intergral = String::try_from(option_env!("ESPERRA_PID_GAINS_K_INTERGRAL").unwrap_or("")).unwrap();
+        let k_derivative = String::try_from(option_env!("ESPERRA_PID_GAINS_K_DERIVATIVE").unwrap_or("")).unwrap();
+
+        PidGains { k_proportional, k_intergral, k_derivative }
     }
 
     fn default_firmware_info() -> FirmwareInfo {
-        FirmwareInfo {
-            url: String::try_from(option_env!("ESPERRA_FIRMWARE_URL").unwrap_or("")).unwrap(),
-            old_version: String::try_from(env!("CARGO_PKG_VERSION")).unwrap(),
-        }
+        let url = String::try_from(option_env!("ESPERRA_FIRMWARE_INFO_URL").unwrap_or("")).unwrap();
+        let version = String::try_from(env!("ESPERRA_FIRMWARE_INFO_VERSION")).unwrap();
+
+        FirmwareInfo { url, version }
     }
 }
 

@@ -206,7 +206,7 @@ async fn check_and_install(stack: Stack<'static>, flash: &mut FlashStorage<'stat
     drop(request);
 
     let version = image_version(&image_header).ok_or(Error::InvalidImage)?;
-    if !is_newer_version(version, firmware_info.old_version.as_str()) {
+    if !is_newer_version(version, firmware_info.version.as_str()) {
         return Ok(false);
     }
 

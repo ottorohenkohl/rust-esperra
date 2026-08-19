@@ -1,3 +1,5 @@
+use heapless::String;
+
 pub trait ConfigPort {
     fn read_heater_options(&self) -> &HeaterOptions;
     fn read_pid_gains(&self) -> &PidGains;
@@ -21,6 +23,6 @@ pub struct PidGains {
 
 #[derive(Clone)]
 pub struct FirmwareInfo {
-    pub url: heapless::String<256>,
-    pub old_version: heapless::String<32>,
+    pub url: String<256>,
+    pub version: String<32>,
 }
