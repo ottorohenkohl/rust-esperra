@@ -1,25 +1,31 @@
-use crate::domain::config::port::{ConfigPort, HeaterOptions, PidGains};
+use crate::domain::config::port::{ConfigPort, FirmwareInfo, HeaterOptions, PidGains};
 use embedded_storage::ReadStorage;
 use esp_storage::{FlashStorage, FlashStorageError};
+use heapless::String;
 
 const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const MAGIC_RECORD: u16 = 2307;
-const RECORD_SIZE: usize = 60;
+const RECORD_SIZE: usize = 348;
+const FIRMWARE_URL_OFFSET: usize = 60;
+const FIRMWARE_URL_SIZE: usize = 256;
+const FIRMWARE_VERSION_OFFSET: usize = FIRMWARE_URL_OFFSET + FIRMWARE_URL_SIZE;
+const FIRMWARE_VERSION_SIZE: usize = 32;
 
 pub struct FlashConfigPort {
     heater_options: HeaterOptions,
     pid_gains: PidGains,
+    firmware_info: FirmwareInfo,
 }
 
 impl FlashConfigPort {
     pub fn new(storage: &mut FlashStorage<'_>) -> Result<Self, FlashStorageError> {
-
         let mut record = [0; RECORD_SIZE];
 
         storage.read(CONFIG_STORAGE_OFFSET, &mut record)?;
 
         let mut heater_options = Self::default_heater_options();
         let mut pid_gains = Self::default_pid_gains();
+        let mut firmware_info = Self::default_firmware_info();
 
         if Self::read_u16(&record, 0) == MAGIC_RECORD {
             heater_options = HeaterOptions {
@@ -34,9 +40,16 @@ impl FlashConfigPort {
                 k_intergral: Self::read_f64(&record, 44),
                 k_derivative: Self::read_f64(&record, 52),
             };
+
+            let url = Self::read_string(&record, FIRMWARE_URL_OFFSET, FIRMWARE_URL_SIZE);
+            let old_version = Self::read_string(&record, FIRMWARE_VERSION_OFFSET, FIRMWARE_VERSION_SIZE);
+            firmware_info = FirmwareInfo {
+                url: if url.is_empty() { firmware_info.url } else { url },
+                old_version: if old_version.is_empty() { firmware_info.old_version } else { old_version },
+            };
         }
 
-        Ok(Self { heater_options, pid_gains })
+        Ok(Self { heater_options, pid_gains, firmware_info })
     }
 
     fn read_u16(record: &[u8; RECORD_SIZE], offset: usize) -> u16 {
@@ -51,12 +64,25 @@ impl FlashConfigPort {
         f64::from_le_bytes(record[offset..offset + 8].try_into().unwrap())
     }
 
+    fn read_string<const N: usize>(record: &[u8; RECORD_SIZE], offset: usize, length: usize) -> String<N> {
+        let bytes = &record[offset..offset + length];
+        let length = bytes.iter().position(|byte| *byte == 0 || *byte == 0xff).unwrap_or(bytes.len());
+        core::str::from_utf8(&bytes[..length]).ok().and_then(|value| String::try_from(value).ok()).unwrap_or_default()
+    }
+
     fn default_heater_options() -> HeaterOptions {
         HeaterOptions { heating_cycle_ms: 100_000, target_temperature: 65.0, target_temperature_interval: 0.5, boost_intervall_size: 5.0 }
     }
 
     fn default_pid_gains() -> PidGains {
         PidGains { k_proportional: 1.0, k_intergral: 0.0, k_derivative: 0.0 }
+    }
+
+    fn default_firmware_info() -> FirmwareInfo {
+        FirmwareInfo {
+            url: String::try_from(option_env!("ESPERRA_FIRMWARE_URL").unwrap_or("")).unwrap(),
+            old_version: String::try_from(env!("CARGO_PKG_VERSION")).unwrap(),
+        }
     }
 }
 
@@ -67,5 +93,9 @@ impl ConfigPort for FlashConfigPort {
 
     fn read_pid_gains(&self) -> &PidGains {
         &self.pid_gains
+    }
+
+    fn read_firmware_info(&self) -> &FirmwareInfo {
+        &self.firmware_info
     }
 }

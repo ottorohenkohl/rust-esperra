@@ -102,19 +102,19 @@ esptool.py --chip esp32s3 write_flash 0x0 firmware.bin
 
 ## OTA updates
 
-The firmware checks GitLab every six hours and installs newer tagged releases into the inactive OTA partition. Before writing flash it stops brewing and sends a boiler safety shutdown. It synchronizes the RTC through SNTP, validates GitLab's HTTPS certificate and hostname against the embedded ISRG Root X1 certificate, and checks the downloaded application image against the manifest's SHA-256 digest.
+The firmware checks the configured firmware base URL every six hours and installs a newer image into the inactive OTA partition. The image version is read from its ESP application descriptor and compared with the old version stored in the configuration. Before writing flash it stops brewing and sends a boiler safety shutdown. It synchronizes the RTC through SNTP and validates the download's HTTPS certificate and hostname against the embedded ISRG Root X1 certificate.
 
 The ESP32-S3 module must provide at least 8 MB flash. Flash `firmware.bin` once over USB to install the bootloader and `partitions.csv`; subsequent releases use `firmware-ota.bin`.
 
 Configure these protected GitLab CI/CD variables before building:
 
 - `ESPERRA_WIFI_SSID` and `ESPERRA_WIFI_PASSWORD` - Wi-Fi credentials compiled into the firmware.
-- `ESPERRA_UPDATE_MANIFEST_URL` - `https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware/latest/manifest.json`.
+- `ESPERRA_FIRMWARE_URL` - default base URL used when the configuration has no firmware URL, for example `https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware`.
 
-A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces the `latest` manifest. Firmware downloads are public and require no GitLab credentials. Keep `src/update/isrg-root-x1.pem` current if the GitLab certificate chain changes to a different root CA.
+A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces `latest/firmware-ota.bin`. Firmware downloads are public and require no GitLab credentials. Keep `src/update/isrg-root-x1.pem` current if the GitLab certificate chain changes to a different root CA.
 
 The precompiled bootloader emitted by `espflash` does not enable automatic rollback. The updater still uses two slots, activates only a fully downloaded and verified image, and confirms the selected slot on boot. Actual bootloader-driven rollback requires building and supplying a custom ESP-IDF bootloader with rollback enabled.
 
 ## CI
 
-`.gitlab-ci.yml` builds both the merged recovery image and the application-only OTA image on every push. A semantic-version tag additionally publishes immutable firmware and its SHA-256 manifest through GitLab's Generic Package Registry.
+`.gitlab-ci.yml` builds both the merged recovery image and the application-only OTA image on every push. A semantic-version tag additionally publishes immutable firmware and replaces the latest OTA image through GitLab's Generic Package Registry.

@@ -17,6 +17,7 @@ use adapter::config::FlashConfigPort;
 use adapter::gpio::Ds18b20TemperaturePort;
 use alloc::sync::Arc;
 use domain::boiler::actor::BoilerActor;
+use domain::config::port::ConfigPort;
 use domain::boiler::protocol::BoilerMessage;
 use domain::gpio::actor::TemperatureSensorActor;
 use domain::gpio::protocol::TemperatureSensorMessage;
@@ -61,6 +62,7 @@ async fn main(spawner: Spawner) {
     let mut flash = FlashStorage::new(peripherals.FLASH);
     update::initialize(&mut flash);
     let config_port = Arc::new(FlashConfigPort::new(&mut flash).unwrap());
+    let firmware_info = config_port.read_firmware_info().clone();
     let heating_output_port = EspOutputPort::new(peripherals.GPIO10);
     let status_light_output_port = EspOutputPort::new(peripherals.GPIO11);
     let power_light_output_port = EspOutputPort::new(peripherals.GPIO12);
@@ -88,6 +90,7 @@ async fn main(spawner: Spawner) {
         peripherals.RNG,
         peripherals.ADC1,
         flash,
+        firmware_info,
         BOILER_ACTOR_MAILBOX.actor_ref(),
         BREW_ACTOR_MAILBOX.actor_ref(),
         spawner,

@@ -1,6 +1,5 @@
-mod manifest;
-
 use core::ffi::CStr;
+use core::fmt::Write;
 use core::net::{IpAddr, SocketAddr};
 
 use embassy_net::{
@@ -24,19 +23,19 @@ use mbedtls_rs::Tls;
 use reqwless::client::{HttpClient, TlsConfig};
 use reqwless::request::{Method, RequestBuilder};
 use reqwless::{Certificate, TlsVersion, X509};
-use sha2::{Digest, Sha256};
 use sntpc::{NtpContext, NtpTimestampGenerator, get_time};
 use sntpc_net_embassy::UdpSocketWrapper;
 use static_cell::StaticCell;
+use heapless::String;
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
+use crate::domain::config::port::FirmwareInfo;
 use crate::library::actor::reference::ActorRef;
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const NTP_SERVER: &str = "pool.ntp.org";
-const MANIFEST_URL: &str = match option_env!("ESPERRA_UPDATE_MANIFEST_URL") { Some(value) => value, None => "" };
 const WIFI_SSID: &str = match option_env!("ESPERRA_WIFI_SSID") { Some(value) => value, None => "" };
 const WIFI_PASSWORD: &str = match option_env!("ESPERRA_WIFI_PASSWORD") { Some(value) => value, None => "" };
 const UPDATE_HEADERS: [(&str, &str); 1] = [("Connection", "close")];
@@ -58,7 +57,6 @@ enum Error {
     Flash,
     Http,
     InvalidImage,
-    Manifest,
     Time,
 }
 
@@ -95,11 +93,12 @@ pub fn start(
     rng: esp_hal::peripherals::RNG<'static>,
     adc1: esp_hal::peripherals::ADC1<'static>,
     flash: FlashStorage<'static>,
+    firmware_info: FirmwareInfo,
     boiler: ActorRef<BoilerMessage>,
     brewing: ActorRef<BrewMessage>,
     spawner: embassy_executor::Spawner,
 ) {
-    if MANIFEST_URL.is_empty() || WIFI_SSID.is_empty() {
+    if firmware_info.url.is_empty() || WIFI_SSID.is_empty() {
         return;
     }
 
@@ -120,7 +119,7 @@ pub fn start(
 
     spawner.spawn(connection_task(controller).unwrap());
     spawner.spawn(network_task(runner).unwrap());
-    spawner.spawn(update_task(stack, flash, boiler, brewing, rtc, tls).unwrap());
+    spawner.spawn(update_task(stack, flash, firmware_info, boiler, brewing, rtc, tls).unwrap());
 }
 
 #[embassy_executor::task]
@@ -139,7 +138,7 @@ async fn network_task(mut runner: Runner<'static, Interface<'static>>) {
 }
 
 #[embassy_executor::task]
-async fn update_task(stack: Stack<'static>, mut flash: FlashStorage<'static>, boiler: ActorRef<BoilerMessage>, brewing: ActorRef<BrewMessage>, rtc: &'static Rtc<'static>, tls: Tls<'static>) {
+async fn update_task(stack: Stack<'static>, mut flash: FlashStorage<'static>, firmware_info: FirmwareInfo, boiler: ActorRef<BoilerMessage>, brewing: ActorRef<BrewMessage>, rtc: &'static Rtc<'static>, tls: Tls<'static>) {
     Timer::after(Duration::from_secs(10)).await;
     confirm_running_image(&mut flash);
     stack.wait_config_up().await;
@@ -151,7 +150,7 @@ async fn update_task(stack: Stack<'static>, mut flash: FlashStorage<'static>, bo
             continue;
         }
 
-        match check_and_install(stack, &mut flash, &boiler, &brewing, &tls).await {
+        match check_and_install(stack, &mut flash, &firmware_info, &boiler, &brewing, &tls).await {
             Ok(true) => esp_hal::system::software_reset(),
             Ok(false) => Timer::after(CHECK_INTERVAL).await,
             Err(error) => {
@@ -185,27 +184,30 @@ async fn synchronize_time(stack: Stack<'static>, rtc: &'static Rtc<'static>) -> 
     Ok(())
 }
 
-async fn check_and_install(stack: Stack<'static>, flash: &mut FlashStorage<'static>, boiler: &ActorRef<BoilerMessage>, brewing: &ActorRef<BrewMessage>, tls: &Tls<'static>) -> Result<bool, Error> {
+async fn check_and_install(stack: Stack<'static>, flash: &mut FlashStorage<'static>, firmware_info: &FirmwareInfo, boiler: &ActorRef<BoilerMessage>, brewing: &ActorRef<BrewMessage>, tls: &Tls<'static>) -> Result<bool, Error> {
     let tcp = TcpClient::new(stack, TCP_STATE.init(TcpClientState::new()));
     let dns = DnsSocket::new(stack);
     let certificate = Certificate::new(X509::PEM(ROOT_CA)).map_err(|_| Error::Http)?;
     let tls_config = TlsConfig::new(TlsVersion::Tls1_2, certificate, None, tls.reference());
     let mut client = HttpClient::new_with_tls(&tcp, &dns, tls_config);
-    let mut response_buffer = [0; 2048];
-    let request = client.request(Method::GET, MANIFEST_URL).await.map_err(|_| Error::Http)?;
+
+    let latest_firmware_url = latest_firmware_url(firmware_info)?;
+    let mut header_buffer = [0; 256];
+    let request = client.request(Method::GET, latest_firmware_url.as_str()).await.map_err(|_| Error::Http)?;
     let mut request = request.headers(&UPDATE_HEADERS);
-    let response = request.send(&mut response_buffer).await.map_err(|_| Error::Http)?;
+    let response = request.send(&mut header_buffer).await.map_err(|_| Error::Http)?;
     if !response.status.is_successful() {
         return Err(Error::Http);
     }
-    let body = response.body().read_to_end().await.map_err(|_| Error::Http)?;
-    let manifest = manifest::parse(body).map_err(|_| Error::Manifest)?;
+    let mut reader = response.body().reader();
+    let mut image_header = [0; 80];
+    reader.read_exact(&mut image_header).await.map_err(|_| Error::Http)?;
+    drop(reader);
     drop(request);
-    if !manifest.is_newer_than(env!("CARGO_PKG_VERSION")) {
+
+    let version = image_version(&image_header).ok_or(Error::InvalidImage)?;
+    if !is_newer_version(version, firmware_info.old_version.as_str()) {
         return Ok(false);
-    }
-    if !manifest.url.starts_with("https://gitlab.rohenkohl.dev/") {
-        return Err(Error::Manifest);
     }
 
     boiler.tell(BoilerMessage::SafetyShutdown);
@@ -215,40 +217,71 @@ async fn check_and_install(stack: Stack<'static>, flash: &mut FlashStorage<'stat
     let mut table = [0; esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN];
     let mut updater = OtaUpdater::new(flash, &mut table).map_err(|_| Error::Flash)?;
     let (mut partition, _) = updater.next_partition().map_err(|_| Error::Flash)?;
-    if manifest.size == 0 || manifest.size > partition.partition_size() {
-        return Err(Error::InvalidImage);
-    }
 
     let mut firmware_buffer = [0; 4096];
-    let request = client.request(Method::GET, &manifest.url).await.map_err(|_| Error::Http)?;
+    let request = client.request(Method::GET, latest_firmware_url.as_str()).await.map_err(|_| Error::Http)?;
     let mut request = request.headers(&UPDATE_HEADERS);
     let response = request.send(&mut firmware_buffer).await.map_err(|_| Error::Http)?;
-    if !response.status.is_successful() || response.content_length != Some(manifest.size) {
+    if !response.status.is_successful() {
         return Err(Error::Http);
     }
 
     let mut reader = response.body().reader();
     let mut chunk = [0; 4096];
     let mut offset = 0;
-    let mut hash = Sha256::new();
     loop {
         let read = reader.read(&mut chunk).await.map_err(|_| Error::Http)?;
         if read == 0 {
             break;
         }
-        if offset + read > manifest.size {
+        if offset + read > partition.partition_size() {
             return Err(Error::InvalidImage);
         }
         partition.write(offset as u32, &chunk[..read]).map_err(|_| Error::Flash)?;
-        hash.update(&chunk[..read]);
         offset += read;
     }
 
-    if offset != manifest.size || hash.finalize().as_slice() != manifest.expected_hash().map_err(|_| Error::Manifest)? {
+    if offset == 0 {
         return Err(Error::InvalidImage);
     }
     drop(partition);
     updater.activate_next_partition().map_err(|_| Error::Flash)?;
     updater.set_current_ota_state(OtaImageState::New).map_err(|_| Error::Flash)?;
     Ok(true)
+}
+
+fn latest_firmware_url(firmware_info: &FirmwareInfo) -> Result<String<256>, Error> {
+    let mut url = String::new();
+    write!(&mut url, "{}/latest/firmware-ota.bin", firmware_info.url.trim_end_matches('/')).map_err(|_| Error::Http)?;
+    Ok(url)
+}
+
+fn image_version(image_header: &[u8; 80]) -> Option<&str> {
+    const APP_DESC_OFFSET: usize = 32;
+    const VERSION_OFFSET: usize = APP_DESC_OFFSET + 16;
+    const VERSION_SIZE: usize = 32;
+
+    if u32::from_le_bytes(image_header[APP_DESC_OFFSET..APP_DESC_OFFSET + 4].try_into().ok()?) != 0xabcd_5432 {
+        return None;
+    }
+    let version = &image_header[VERSION_OFFSET..VERSION_OFFSET + VERSION_SIZE];
+    let length = version.iter().position(|byte| *byte == 0).unwrap_or(VERSION_SIZE);
+    core::str::from_utf8(&version[..length]).ok()
+}
+
+fn is_newer_version(candidate: &str, current: &str) -> bool {
+    let mut candidate = candidate.split('.');
+    let mut current = current.split('.');
+
+    for _ in 0..3 {
+        let (Some(candidate), Some(current)) = (candidate.next(), current.next()) else { return false };
+        match candidate.parse::<u32>().ok().zip(current.parse::<u32>().ok()) {
+            Some((candidate, current)) if candidate > current => return true,
+            Some((candidate, current)) if candidate < current => return false,
+            Some(_) => {}
+            None => return false,
+        }
+    }
+
+    candidate.next().is_none() && current.next().is_none()
 }
