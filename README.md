@@ -92,7 +92,7 @@ cargo run --release   # uses the runner configured in .cargo/config.toml (espfla
 
 ### Flashing from your local machine (recommended)
 
-Every push to `main` builds both a merged `firmware.bin` for initial/recovery flashing and an application-only `firmware-ota.bin`. Download `firmware.bin` from the `build:firmware` job for the first installation. On your machine, install just `espflash` (`brew install espflash` / `cargo install espflash`) or `esptool` (`pip install esptool`) - no Rust toolchain needed - and flash:
+Every push to `main` builds a rollback-enabled ESP-IDF bootloader, a merged `firmware.bin` for initial/recovery flashing, and an application-only `firmware-ota.bin`. Download `firmware.bin` from the `build:firmware` job for the first installation. On your machine, install just `espflash` (`brew install espflash` / `cargo install espflash`) or `esptool` (`pip install esptool`) - no Rust toolchain needed - and flash:
 
 ```bash
 espflash flash --format raw firmware.bin /dev/tty.usbserial-XXXX
@@ -104,7 +104,7 @@ esptool.py --chip esp32s3 write_flash 0x0 firmware.bin
 
 Turn the machine power off for 8–12 seconds, then back on, to check the configured firmware base URL and install a newer image into the inactive OTA partition. The image version is read from its ESP application descriptor and compared with the old version stored in the configuration. Before checking, the firmware stops brewing and sends a boiler safety shutdown; both indicator lights blink until the update completes. It synchronizes the RTC through SNTP and validates the download's HTTPS certificate and hostname against the embedded ISRG Root X1 certificate.
 
-The ESP32-S3 module must provide at least 8 MB flash. Flash `firmware.bin` once over USB to install the bootloader and `partitions.csv`; subsequent releases use `firmware-ota.bin`.
+The ESP32-S3 module must provide at least 8 MB flash. Flash `firmware.bin` once over USB to install the custom bootloader and `partitions.csv`; subsequent releases use `firmware-ota.bin`. Existing devices also need this one-time USB flash before automatic rollback is available.
 
 Configure these protected GitLab CI/CD variables before building:
 
@@ -114,8 +114,8 @@ Configure these protected GitLab CI/CD variables before building:
 
 A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces `latest/firmware-ota.bin`. Firmware downloads are public and require no GitLab credentials. Keep `res/isrg-root-x1.pem` current if the GitLab certificate chain changes to a different root CA.
 
-The same 8–12 second power-off gesture confirms a newly booted OTA image. Until confirmation, a rollback-enabled bootloader can restore the previous image after the next reset. The precompiled bootloader emitted by `espflash` does not enable automatic rollback; bootloader-driven rollback requires building and supplying a custom ESP-IDF bootloader with rollback enabled.
+The same 8–12 second power-off gesture confirms a newly booted OTA image. Until confirmation, the custom bootloader restores the previous valid OTA image after a reset or power loss. CI builds this bootloader from `bootloader/sdkconfig.defaults` with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` and supplies it to `espflash` when creating `firmware.bin`.
 
 ## CI
 
-`.gitlab-ci.yml` builds both the merged recovery image and the application-only OTA image on every push. A semantic-version tag additionally publishes immutable firmware and replaces the latest OTA image through GitLab's Generic Package Registry.
+`.gitlab-ci.yml` builds the custom ESP-IDF bootloader, the merged recovery image, and the application-only OTA image on every push. A semantic-version tag additionally publishes immutable firmware and replaces the latest OTA image through GitLab's Generic Package Registry.

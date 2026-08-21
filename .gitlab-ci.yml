@@ -1,20 +1,36 @@
 stages:
+  - bootloader
   - build
   - release
 
 variables:
   FIRMWARE_PACKAGE: "firmware"
 
+build:bootloader:
+  stage: bootloader
+  image: espressif/idf:v5.5.2
+  script:
+    - cd bootloader
+    - idf.py set-target esp32s3 bootloader
+    - grep -q '^CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y$' sdkconfig
+  artifacts:
+    paths:
+      - bootloader/build/bootloader/bootloader.bin
+    expire_in: 30 days
+
 build:firmware:
   stage: build
   image: espressif/idf-rust:esp32s3_1.93.0.0
+  needs:
+    - job: build:bootloader
+      artifacts: true
   before_script:
     - . "$HOME/export-esp.sh"
     - python3 -m pip install --user --break-system-packages cmake
     - export PATH="$HOME/.local/bin:$(dirname "$(command -v xtensa-esp32s3-elf-gcc)"):$PATH"
   script:
     - cargo build --release
-    - espflash save-image --chip esp32s3 --flash-size 8mb --partition-table partitions.csv --target-app-partition factory --merge target/xtensa-esp32s3-none-elf/release/esperra firmware.bin
+    - espflash save-image --chip esp32s3 --flash-size 8mb --bootloader bootloader/build/bootloader/bootloader.bin --partition-table partitions.csv --target-app-partition factory --merge target/xtensa-esp32s3-none-elf/release/esperra firmware.bin
     - espflash save-image --chip esp32s3 --flash-size 8mb --partition-table partitions.csv --target-app-partition ota_0 target/xtensa-esp32s3-none-elf/release/esperra firmware-ota.bin
   artifacts:
     name: "esperra-firmware-$CI_COMMIT_SHORT_SHA"
