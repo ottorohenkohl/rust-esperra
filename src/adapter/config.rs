@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ConfigPort, FirmwareInfo, HeaterOptions, PidGains};
+use crate::domain::config::port::{ConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains};
 
 use embedded_storage::ReadStorage;
 use esp_storage::{FlashStorage, FlashStorageError};
@@ -12,6 +12,7 @@ pub struct FlashConfigPort {
     heater_options: HeaterOptions,
     pid_gains: PidGains,
     firmware_info: FirmwareInfo,
+    network_info: NetworkInfo,
 }
 
 impl FlashConfigPort {
@@ -23,6 +24,7 @@ impl FlashConfigPort {
         let mut heater_options = Self::default_heater_options();
         let mut pid_gains = Self::default_pid_gains();
         let mut firmware_info = Self::default_firmware_info();
+        let network_info = Self::default_network_info();
 
         if Self::read_u16(&record, 0) == MAGIC_RECORD {
             heater_options = HeaterOptions {
@@ -44,7 +46,7 @@ impl FlashConfigPort {
             };
         }
 
-        Ok(Self { heater_options, pid_gains, firmware_info })
+        Ok(Self { heater_options, pid_gains, firmware_info, network_info })
     }
 
     fn read_u16(record: &[u8; RECORD_SIZE], offset: usize) -> u16 {
@@ -89,6 +91,14 @@ impl FlashConfigPort {
 
         FirmwareInfo { url, version }
     }
+
+    fn default_network_info() -> NetworkInfo {
+        let ntp_server = String::try_from(option_env!("ESPERRA_NTP_SERVER").unwrap_or("pool.ntp.org")).unwrap();
+        let wifi_ssid = String::try_from(option_env!("ESPERRA_WIFI_SSID").unwrap_or("")).unwrap();
+        let wifi_password = String::try_from(option_env!("ESPERRA_WIFI_PASSWORD").unwrap_or("")).unwrap();
+
+        NetworkInfo { ntp_server, wifi_ssid, wifi_password }
+    }
 }
 
 impl ConfigPort for FlashConfigPort {
@@ -102,5 +112,9 @@ impl ConfigPort for FlashConfigPort {
 
     fn read_firmware_info(&self) -> &FirmwareInfo {
         &self.firmware_info
+    }
+
+    fn read_network_info(&self) -> &NetworkInfo {
+        &self.network_info
     }
 }

@@ -4,6 +4,7 @@ pub trait ConfigPort {
     fn read_heater_options(&self) -> &HeaterOptions;
     fn read_pid_gains(&self) -> &PidGains;
     fn read_firmware_info(&self) -> &FirmwareInfo;
+    fn read_network_info(&self) -> &NetworkInfo;
 }
 
 #[derive(Clone, Copy)]
@@ -25,4 +26,11 @@ pub struct PidGains {
 pub struct FirmwareInfo {
     pub url: String<256>,
     pub version: String<32>,
+}
+
+#[derive(Clone)]
+pub struct NetworkInfo {
+    pub ntp_server: String<64>,
+    pub wifi_ssid: String<32>,
+    pub wifi_password: String<64>,
 }

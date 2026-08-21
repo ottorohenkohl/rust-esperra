@@ -17,7 +17,6 @@ use adapter::config::FlashConfigPort;
 use adapter::gpio::Ds18b20TemperaturePort;
 use alloc::sync::Arc;
 use domain::boiler::actor::BoilerActor;
-use domain::config::port::ConfigPort;
 use domain::boiler::protocol::BoilerMessage;
 use domain::gpio::actor::TemperatureSensorActor;
 use domain::gpio::protocol::TemperatureSensorMessage;
@@ -36,7 +35,6 @@ use embassy_futures::join::join3;
 mod adapter;
 mod domain;
 mod library;
-mod update;
 
 const TICK_INTERVALL: Duration = Duration::from_millis(100);
 
@@ -60,9 +58,8 @@ async fn main(spawner: Spawner) {
     esp_rtos::start(TimerGroup::new(peripherals.TIMG0).timer0, SoftwareInterruptControl::new(peripherals.SW_INTERRUPT).software_interrupt0);
 
     let mut flash = FlashStorage::new(peripherals.FLASH);
-    update::initialize(&mut flash);
+    adapter::update::UpdateAdapter::<FlashConfigPort>::initialize(&mut flash);
     let config_port = Arc::new(FlashConfigPort::new(&mut flash).unwrap());
-    let firmware_info = config_port.read_firmware_info().clone();
     let heating_output_port = EspOutputPort::new(peripherals.GPIO10);
     let status_light_output_port = EspOutputPort::new(peripherals.GPIO11);
     let power_light_output_port = EspOutputPort::new(peripherals.GPIO12);
@@ -74,9 +71,30 @@ async fn main(spawner: Spawner) {
     let status_input_port = EspInputPort::new(peripherals.GPIO16, Pull::Up);
     let water_input_port = EspInputPort::new(peripherals.GPIO17, Pull::Up);
 
+    let update_adapter = adapter::update::UpdateAdapter::new(
+        peripherals.WIFI,
+        peripherals.LPWR,
+        peripherals.RNG,
+        peripherals.ADC1,
+        flash,
+        Arc::clone(&config_port),
+        BOILER_ACTOR_MAILBOX.actor_ref(),
+        BREW_ACTOR_MAILBOX.actor_ref(),
+        spawner,
+    );
+
     let boiler_actor = BoilerActor::new(config_port, heating_output_port, POWER_LIGHT_ACTOR_MAILBOX.actor_ref(), STATUS_LIGHT_ACTOR_MAILBOX.actor_ref());
     let brew_actor = BrewActor::new(pump_output_port, valve_output_port);
-    let circuit_actor = CircuitActor::new(BOILER_ACTOR_MAILBOX.actor_ref(), BREW_ACTOR_MAILBOX.actor_ref(), power_input_port, status_input_port, STATUS_LIGHT_ACTOR_MAILBOX.actor_ref(), water_input_port);
+    let circuit_actor = CircuitActor::new(
+        BOILER_ACTOR_MAILBOX.actor_ref(),
+        BREW_ACTOR_MAILBOX.actor_ref(),
+        power_input_port,
+        status_input_port,
+        POWER_LIGHT_ACTOR_MAILBOX.actor_ref(),
+        STATUS_LIGHT_ACTOR_MAILBOX.actor_ref(),
+        water_input_port,
+        update_adapter,
+    );
     let power_light_actor = LightActor::new(power_light_output_port, EspTimerPort::new());
     let status_light_actor = LightActor::new(status_light_output_port, EspTimerPort::new());
     let temperature_sensor_actor = TemperatureSensorActor::new(temperature_port, Vec::from_slice(&[BOILER_ACTOR_MAILBOX.actor_ref().subscriber()]).unwrap());
@@ -84,28 +102,18 @@ async fn main(spawner: Spawner) {
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), CIRCUIT_ACTOR_MAILBOX.run(circuit_actor));
     let actor_group_2 = join3(POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor), TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor));
 
-    update::start(
-        peripherals.WIFI,
-        peripherals.LPWR,
-        peripherals.RNG,
-        peripherals.ADC1,
-        flash,
-        firmware_info,
-        BOILER_ACTOR_MAILBOX.actor_ref(),
-        BREW_ACTOR_MAILBOX.actor_ref(),
-        spawner,
-    );
-
     join3(actor_group_1, actor_group_2, event_loop()).await;
 }
 
 async fn event_loop() {
     let boiler_actor = BOILER_ACTOR_MAILBOX.actor_ref();
+    let circuit_actor = CIRCUIT_ACTOR_MAILBOX.actor_ref();
     let temperature_sensor_actor = TEMPERATURE_SENSOR_ACTOR_MAILBOX.actor_ref();
 
 
     loop {
         boiler_actor.tell(BoilerMessage::SwitchHeater);
+        circuit_actor.tell(CircuitMessage::HandleInputStates);
         temperature_sensor_actor.tell(TemperatureSensorMessage::MeasureTemperature);
 
         Timer::after(TICK_INTERVALL).await;
