@@ -34,6 +34,7 @@ where
     S: InputPort,
     W: InputPort,
     U: UpdatePort,
+    U::Error: core::fmt::Debug,
 {
     pub fn new(
         boiler_actor: ActorRef<BoilerMessage>,

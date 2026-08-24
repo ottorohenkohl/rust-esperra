@@ -69,25 +69,25 @@ impl FlashConfigPort {
     }
 
     fn default_heater_options() -> HeaterOptions {
-        let heating_cycle_ms = String::try_from(option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("")).unwrap();
-        let target_temperature = String::try_from(option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE").unwrap_or("")).unwrap();
-        let target_temperature_interval = String::try_from(option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL").unwrap_or("")).unwrap();
-        let boost_intervall_size = String::try_from(option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("")).unwrap();
+        let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("100000").parse().unwrap();
+        let target_temperature = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE").unwrap_or("65.0").parse().unwrap();
+        let target_temperature_interval = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL").unwrap_or("0.5").parse().unwrap();
+        let boost_intervall_size = option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("5.0").parse().unwrap();
 
         HeaterOptions { heating_cycle_ms, target_temperature, target_temperature_interval, boost_intervall_size }
     }
 
     fn default_pid_gains() -> PidGains {
-        let k_proportional = String::try_from(option_env!("ESPERRA_PID_GAINS_K_PROPORTIONAL").unwrap_or("")).unwrap();
-        let k_intergral = String::try_from(option_env!("ESPERRA_PID_GAINS_K_INTERGRAL").unwrap_or("")).unwrap();
-        let k_derivative = String::try_from(option_env!("ESPERRA_PID_GAINS_K_DERIVATIVE").unwrap_or("")).unwrap();
+        let k_proportional = option_env!("ESPERRA_PID_GAINS_K_PROPORTIONAL").unwrap_or("1.0").parse().unwrap();
+        let k_intergral = option_env!("ESPERRA_PID_GAINS_K_INTERGRAL").unwrap_or("0.0").parse().unwrap();
+        let k_derivative = option_env!("ESPERRA_PID_GAINS_K_DERIVATIVE").unwrap_or("0.0").parse().unwrap();
 
         PidGains { k_proportional, k_intergral, k_derivative }
     }
 
     fn default_firmware_info() -> FirmwareInfo {
-        let url = String::try_from(option_env!("ESPERRA_FIRMWARE_INFO_URL").unwrap_or("")).unwrap();
-        let version = String::try_from(env!("ESPERRA_FIRMWARE_INFO_VERSION")).unwrap();
+        let url = String::try_from(option_env!("ESPERRA_FIRMWARE_URL").unwrap_or("")).unwrap();
+        let version = String::try_from(env!("CARGO_PKG_VERSION")).unwrap();
 
         FirmwareInfo { url, version }
     }
