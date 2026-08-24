@@ -9,6 +9,8 @@ variables:
 build:bootloader:
   stage: bootloader
   image: espressif/idf:v5.5.2
+  before_script:
+    - . /opt/esp/idf/export.sh
   script:
     - cd boot
     - idf.py set-target esp32s3 bootloader
