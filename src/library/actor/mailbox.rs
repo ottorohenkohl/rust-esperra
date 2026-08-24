@@ -4,11 +4,11 @@ use super::reference::ActorRef;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 
-pub struct Mailbox<Message, const size: usize> {
-    channel: Channel<CriticalSectionRawMutex, Message, size>,
+pub struct Mailbox<Message, const SIZE: usize> {
+    channel: Channel<CriticalSectionRawMutex, Message, SIZE>,
 }
 
-impl<Message: 'static, const size: usize> Mailbox<Message, size> {
+impl<Message: 'static, const SIZE: usize> Mailbox<Message, SIZE> {
     pub const fn new() -> Self {
         let channel = Channel::new();
 

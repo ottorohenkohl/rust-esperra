@@ -58,7 +58,7 @@ pub enum UpdateError {
     Time,
 }
 
-pub struct UpdateAdapter<C> {
+pub struct EspUpdatePort<C> {
     stack: Stack<'static>,
     flash: FlashStorage<'static>,
     config: Arc<C>,
@@ -88,7 +88,7 @@ impl NtpTimestampGenerator for Timestamp {
     }
 }
 
-impl<C> UpdateAdapter<C>
+impl<C> EspUpdatePort<C>
 where
     C: ConfigPort,
 {
@@ -153,7 +153,7 @@ async fn network_task(mut runner: Runner<'static, Interface<'static>>) {
     runner.run().await;
 }
 
-impl<C> UpdatePort for UpdateAdapter<C>
+impl<C> UpdatePort for EspUpdatePort<C>
 where
     C: ConfigPort,
 {

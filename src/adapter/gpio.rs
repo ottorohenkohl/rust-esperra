@@ -32,7 +32,7 @@ impl OutputPort for EspOutputPort<'_> {
     }
 
     async fn invert_state(&mut self) {
-        self.set_active(self.pin.is_set_low());
+        let _ = self.set_active(self.pin.is_set_low());
     }
 }
 
