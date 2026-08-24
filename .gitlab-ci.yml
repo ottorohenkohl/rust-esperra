@@ -10,12 +10,12 @@ build:bootloader:
   stage: bootloader
   image: espressif/idf:v5.5.2
   script:
-    - cd bootloader
+    - cd boot
     - idf.py set-target esp32s3 bootloader
     - grep -q '^CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y$' sdkconfig
   artifacts:
     paths:
-      - bootloader/build/bootloader/bootloader.bin
+      - boot/build/bootloader/bootloader.bin
     expire_in: 30 days
 
 build:firmware:
@@ -30,8 +30,8 @@ build:firmware:
     - export PATH="$HOME/.local/bin:$(dirname "$(command -v xtensa-esp32s3-elf-gcc)"):$PATH"
   script:
     - cargo build --release
-    - espflash save-image --chip esp32s3 --flash-size 8mb --bootloader bootloader/build/bootloader/bootloader.bin --partition-table partitions.csv --target-app-partition factory --merge target/xtensa-esp32s3-none-elf/release/esperra firmware.bin
-    - espflash save-image --chip esp32s3 --flash-size 8mb --partition-table partitions.csv --target-app-partition ota_0 target/xtensa-esp32s3-none-elf/release/esperra firmware-ota.bin
+    - espflash save-image --chip esp32s3 --flash-size 8mb --bootloader boot/build/bootloader/bootloader.bin --partition-table res/partitions.csv --target-app-partition factory --merge target/xtensa-esp32s3-none-elf/release/esperra firmware.bin
+    - espflash save-image --chip esp32s3 --flash-size 8mb --partition-table res/partitions.csv --target-app-partition ota_0 target/xtensa-esp32s3-none-elf/release/esperra firmware-ota.bin
   artifacts:
     name: "esperra-firmware-$CI_COMMIT_SHORT_SHA"
     paths:
