@@ -1,4 +1,3 @@
-
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::gpio::port::OutputPort;
 use crate::library::actor::Actor;
@@ -22,9 +21,6 @@ impl<P, V> Actor for BrewActor<P, V> where P: OutputPort, V: OutputPort {
             BrewMessage::SetBrewing(active) => {
                 self.pump_output_port.set_active(active).await;
                 self.valve_output_port.set_active(active).await;
-            }
-            BrewMessage::SetPaused(active) => {
-                self.pump_output_port.set_active(!active).await;
             }
         }
     }

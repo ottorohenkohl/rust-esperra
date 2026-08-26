@@ -1,7 +1,6 @@
 use crate::domain::gpio::port::InputPort;
 use crate::domain::gpio::port::OutputPort;
-use crate::domain::gpio::port::TemperatureSensorPort;
-use crate::library::error::Error;
+use crate::domain::gpio::port::{TemperatureSensorError, TemperatureSensorPort};
 
 use embassy_time::{Duration, Timer};
 use esp_hal::delay::Delay;
@@ -60,7 +59,7 @@ pub struct Ds18b20TemperaturePort<'d> {
 }
 
 impl<'d> Ds18b20TemperaturePort<'d> {
-    pub fn new(pin: impl Pin + 'd) -> Result<Self, Error> {
+    pub fn new(pin: impl Pin + 'd) -> Result<Self, TemperatureSensorError> {
         let mut pin = Flex::new(pin);
 
         pin.apply_output_config(&OutputConfig::default().with_drive_mode(DriveMode::OpenDrain));
@@ -71,22 +70,23 @@ impl<'d> Ds18b20TemperaturePort<'d> {
         let mut bus = OneWire::new(pin, false);
         let mut delay = Delay::new();
 
-        let device = bus.search_next(&mut DeviceSearch::new_for_family(0x28), &mut delay).map_err(|_| Error)?.ok_or(Error)?;
-        let sensor = DS18B20::new(device).map_err(|_| Error)?;
+        let device = bus.search_next(&mut DeviceSearch::new_for_family(0x28), &mut delay).map_err(|_| TemperatureSensorError::DiscoveryFailed)?.ok_or(TemperatureSensorError::NotFound)?;
+
+        let sensor = DS18B20::new(device).map_err(|_| TemperatureSensorError::InitializationFailed)?;
 
         Ok(Self { bus, sensor })
     }
 }
 
 impl TemperatureSensorPort for Ds18b20TemperaturePort<'_> {
-    async fn read_temperature(&mut self) -> Result<f64, Error> {
+    async fn read_temperature(&mut self) -> Result<f64, TemperatureSensorError> {
         let mut delay = Delay::new();
 
-        let resolution = self.sensor.measure_temperature(&mut self.bus, &mut delay).map_err(|_| Error)?;
+        let resolution = self.sensor.measure_temperature(&mut self.bus, &mut delay).map_err(|_| TemperatureSensorError::MeasurementStartFailed)?;
 
         Timer::after(Duration::from_millis(resolution.time_ms() as u64)).await;
 
-        let raw_temperature = self.sensor.read_temperature(&mut self.bus, &mut delay).map_err(|_| Error)?;
+        let raw_temperature = self.sensor.read_temperature(&mut self.bus, &mut delay).map_err(|_| TemperatureSensorError::MeasurementReadFailed)?;
 
         Ok(raw_temperature as i16 as f64 / 16.0)
     }

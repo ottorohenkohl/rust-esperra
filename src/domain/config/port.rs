@@ -1,5 +1,11 @@
 use heapless::String;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConfigError {
+    StorageReadFailed,
+    StorageWriteFailed,
+}
+
 pub trait ConfigPort {
     fn read_heater_options(&self) -> &HeaterOptions;
     fn read_pid_gains(&self) -> &PidGains;

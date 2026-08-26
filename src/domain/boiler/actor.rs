@@ -11,6 +11,7 @@ use alloc::sync::Arc;
 use embassy_time::Instant;
 
 pub struct BoilerActor<C, H> {
+    actor_ref: ActorRef<BoilerMessage>,
     config: Arc<C>,
     current_temperature: f64,
     cycle_start: Instant,
@@ -22,14 +23,14 @@ pub struct BoilerActor<C, H> {
 }
 
 impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
-    pub fn new(config: Arc<C>, heating_output_port: H, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) -> Self {
+    pub fn new(actor_ref: ActorRef<BoilerMessage>, config: Arc<C>, heating_output_port: H, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) -> Self {
         let pid_service = PidService::new(Arc::clone(&config));
         let cycle_start = Instant::now();
 
         let current_temperature = 21.0;
         let is_active = true;
 
-        Self { config, current_temperature, cycle_start, heating_output_port, is_active, pid_service, power_light_actor, status_light_actor }
+        Self { actor_ref, config, current_temperature, cycle_start, heating_output_port, is_active, pid_service, power_light_actor, status_light_actor }
     }
 
     fn update_cycle(&mut self) {
@@ -68,10 +69,10 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
 
             match self.current_temperature {
                 current_temperature if (lower_bound..upper_bound).contains(&current_temperature) => {
-                    self.power_light_actor.tell(LightMessage::SetActive(true));
+                    self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
                 }
                 _ => {
-                    self.power_light_actor.tell(LightMessage::BlinkTimes(1));
+                    self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
                 }
             }
         }
@@ -88,8 +89,9 @@ impl<C, H> Actor for BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
             }
             BoilerMessage::SafetyShutdown => {
                 self.is_active = false;
+                
                 self.heating_output_port.set_active(false).await;
-                self.status_light_actor.tell(LightMessage::BlinkTimes(3));
+                self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(3));
             }
             BoilerMessage::UpdateTemperature { measured_temperature } => {
                 self.current_temperature = measured_temperature;

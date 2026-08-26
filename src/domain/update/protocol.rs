@@ -1,2 +1,4 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Error;
+pub enum UpdateMessage {
+    Start,
+}

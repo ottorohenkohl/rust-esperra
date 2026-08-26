@@ -1,3 +1,5 @@
+use super::port::TemperatureSensorError;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LightMessage {
     SetActive(bool),
@@ -12,5 +14,5 @@ pub enum TemperatureSensorMessage {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TemperatureSensorResponse {
     Measured(f64),
-    MeasurementFailed,
+    MeasurementFailed(TemperatureSensorError),
 }

@@ -4,7 +4,6 @@ use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorR
 use crate::domain::clock::port::TimerPort;
 use crate::library::actor::Actor;
 use crate::library::actor::reference::Subscriber;
-use crate::library::error::Error;
 
 use heapless::Vec;
 
@@ -56,7 +55,7 @@ impl<P> Actor for TemperatureSensorActor<P> where P: TemperatureSensorPort {
             TemperatureSensorMessage::MeasureTemperature => {
                 let message = match self.temperature_port.read_temperature().await {
                     Ok(temperature) => TemperatureSensorResponse::Measured(temperature),
-                    Err(Error) => TemperatureSensorResponse::MeasurementFailed,
+                    Err(error) => TemperatureSensorResponse::MeasurementFailed(error),
                 };
 
                 self.subscribers.iter().for_each(|i| { i.tell(message) });

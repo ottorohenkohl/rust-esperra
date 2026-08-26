@@ -1,4 +1,11 @@
-use crate::library::error::Error;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TemperatureSensorError {
+    DiscoveryFailed,
+    NotFound,
+    InitializationFailed,
+    MeasurementStartFailed,
+    MeasurementReadFailed,
+}
 
 pub trait InputPort {
     fn powered_state(&self) -> bool;
@@ -10,5 +17,5 @@ pub trait OutputPort {
 }
 
 pub trait TemperatureSensorPort {
-    async fn read_temperature(&mut self) -> Result<f64, Error>;
+    async fn read_temperature(&mut self) -> Result<f64, TemperatureSensorError>;
 }
