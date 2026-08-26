@@ -16,21 +16,18 @@ pub struct BoilerActor<C, H> {
     current_temperature: f64,
     cycle_start: Instant,
     heating_output_port: H,
-    is_active: bool,
     pid_service: PidService<C>,
-    power_light_actor: ActorRef<LightMessage>,
-    status_light_actor: ActorRef<LightMessage>,
+    power_light_actor: ActorRef<LightMessage>
 }
 
 impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
-    pub fn new(actor_ref: ActorRef<BoilerMessage>, config: Arc<C>, heating_output_port: H, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) -> Self {
+    pub fn new(actor_ref: ActorRef<BoilerMessage>, config: Arc<C>, heating_output_port: H, power_light_actor: ActorRef<LightMessage>) -> Self {
         let pid_service = PidService::new(Arc::clone(&config));
         let cycle_start = Instant::now();
 
         let current_temperature = 21.0;
-        let is_active = true;
 
-        Self { actor_ref, config, current_temperature, cycle_start, heating_output_port, is_active, pid_service, power_light_actor, status_light_actor }
+        Self { actor_ref, config, current_temperature, cycle_start, heating_output_port, pid_service, power_light_actor }
     }
 
     fn update_cycle(&mut self) {
@@ -56,24 +53,22 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
     }
 
     async fn switch_heater(&mut self) {
-        if self.is_active {
-            self.update_cycle();
+        self.update_cycle();
 
-            let should_heat = self.should_heat();
-            let heater_options = self.config.read_heater_options();
+        let should_heat = self.should_heat();
+        let heater_options = self.config.read_heater_options();
 
-            self.heating_output_port.set_active(self.is_active && should_heat).await;
+        self.heating_output_port.set_active(should_heat).await;
 
-            let lower_bound = heater_options.target_temperature - heater_options.target_temperature_interval;
-            let upper_bound = heater_options.target_temperature + heater_options.target_temperature_interval;
+        let lower_bound = heater_options.target_temperature - heater_options.target_temperature_interval;
+        let upper_bound = heater_options.target_temperature + heater_options.target_temperature_interval;
 
-            match self.current_temperature {
-                current_temperature if (lower_bound..upper_bound).contains(&current_temperature) => {
-                    self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
-                }
-                _ => {
-                    self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
-                }
+        match self.current_temperature {
+            current_temperature if (lower_bound..upper_bound).contains(&current_temperature) => {
+                self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
+            }
+            _ => {
+                self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
             }
         }
     }
@@ -87,17 +82,11 @@ impl<C, H> Actor for BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
             BoilerMessage::SwitchHeater => {
                 self.switch_heater().await;
             }
-            BoilerMessage::SafetyShutdown => {
-                self.is_active = false;
-                
-                self.heating_output_port.set_active(false).await;
-                self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(3));
-            }
-            BoilerMessage::UpdateTemperature { measured_temperature } => {
+            BoilerMessage::UpdateTemperature(measured_temperature) => {
                 self.current_temperature = measured_temperature;
             }
-            BoilerMessage::SetActive { active } => {
-                self.is_active = active;
+            BoilerMessage::SetActive(active) => {
+                self.heating_output_port.set_active(active).await;
             }
         }
     }

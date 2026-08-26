@@ -53,7 +53,7 @@ impl<U: UpdatePort> UpdateActor<U> {
     fn cleanup(&self) {
         self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(false));
         self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(false));
-        self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive { active: true });
+        self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
 
         self.release_locks();
     }
@@ -73,7 +73,7 @@ impl<U: UpdatePort> UpdateActor<U> {
 
     async fn start(&mut self) {
         if self.acquire_locks() {
-            self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SafetyShutdown);
+            self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
             self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
 
             self.blink_once();

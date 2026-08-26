@@ -46,17 +46,17 @@ where P: InputPort, S: InputPort, W: InputPort {
         let previous = self.machine_powered.replace(powered);
 
         match (previous, powered) {
-            (None, false) => {
+            (Some(true), false) | (None, false) => {
                 self.power_off_since = Some(Instant::now());
 
-                self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive { active: false });
+                self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
             }
-            (Some(false), true) => {
+            (Some(false), true) | (None, true) => {
                 if self.reached_update_interval() {
                     return self.update_actor.tell(Some(&self.actor_ref), UpdateMessage::Start);
                 }
 
-                self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive { active: true });
+                self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
             }
             _ => {}
         }
