@@ -1,63 +1,48 @@
-use super::mailbox::Envelope;
+use super::mailbox::{Envelope, Mailbox};
 
 use alloc::sync::Arc;
-use core::sync::atomic::{AtomicUsize, Ordering};
-use embassy_sync::channel::DynamicSender;
 
-mod sealed {
-    pub trait Sealed {
-        fn address(&self) -> usize;
-    }
+pub trait Caller {
+    fn address(&self) -> usize;
 }
 
-#[doc(hidden)]
-pub trait Caller: sealed::Sealed {}
-
 pub struct ActorRef<Message: 'static> {
-    sender: DynamicSender<'static, Envelope<Message>>,
-    address: usize,
-    lock: &'static AtomicUsize,
+    mailbox: &'static dyn Mailbox<Message>,
 }
 
 impl<Message: 'static> Clone for ActorRef<Message> {
     fn clone(&self) -> Self {
-        let sender = self.sender.clone();
+        let mailbox = self.mailbox;
 
-        Self { sender, address: self.address, lock: self.lock }
+        Self { mailbox }
     }
 }
 
 impl<Message: 'static> ActorRef<Message> {
-    pub(super) fn new(sender: DynamicSender<'static, Envelope<Message>>, address: usize, lock: &'static AtomicUsize) -> Self {
-        ActorRef { sender, address, lock }
+    pub fn new(mailbox: &'static dyn Mailbox<Message>) -> Self {
+        Self { mailbox }
     }
 
     pub fn tell(&self, caller: Option<&dyn Caller>, message: Message) {
-        let caller = caller.map(sealed::Sealed::address);
-        let _ = self.sender.try_send(Envelope { caller, message });
+        let caller = caller.map(Caller::address);
+
+        self.mailbox.try_send(Envelope { caller, message });
     }
 
     pub fn lock(&self, caller: &dyn Caller) -> bool {
         let caller = caller.address();
 
-        match self.lock.compare_exchange(0, caller, Ordering::SeqCst, Ordering::SeqCst) {
-            Ok(_) => true,
-            Err(owner) => owner == caller,
-        }
+        self.mailbox.lock(caller)
     }
 
     pub fn unlock(&self, caller: &dyn Caller) -> bool {
         let caller = caller.address();
 
-        self.lock.compare_exchange(caller, 0, Ordering::SeqCst, Ordering::SeqCst).is_ok()
+        self.mailbox.unlock(caller)
     }
 
     pub fn subscriber<PublishedMessage, CallerMessage, const SIZE: usize>(&self, caller: &ActorRef<CallerMessage>) -> Subscriber<PublishedMessage, SIZE>
-    where
-        Message: From<PublishedMessage>,
-        PublishedMessage: 'static,
-        CallerMessage: 'static,
-    {
+    where Message: From<PublishedMessage>, PublishedMessage: 'static, CallerMessage: 'static {
         let actor_ref = self.clone();
         let caller = caller.clone();
 
@@ -67,13 +52,11 @@ impl<Message: 'static> ActorRef<Message> {
     }
 }
 
-impl<Message: 'static> sealed::Sealed for ActorRef<Message> {
+impl<Message: 'static> Caller for ActorRef<Message> {
     fn address(&self) -> usize {
-        self.address
+        self.mailbox.address()
     }
 }
-
-impl<Message: 'static> Caller for ActorRef<Message> {}
 
 pub struct Subscriber<Message, const SIZE: usize> {
     tell: Arc<dyn Fn(Message)>,
