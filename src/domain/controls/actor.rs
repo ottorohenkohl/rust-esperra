@@ -5,7 +5,8 @@ use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::gpio::port::InputPort;
 use crate::domain::gpio::protocol::LightMessage;
 use crate::domain::update::protocol::UpdateMessage;
-use crate::library::actor::{Actor, ActorRef};
+use crate::library::actor::interface::Actor;
+use crate::library::actor::model::ActorRef;
 
 use embassy_time::{Duration, Instant};
 

@@ -10,14 +10,14 @@ const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const MAGIC_RECORD: u16 = 2307;
 const RECORD_SIZE: usize = 1024;
 
-pub struct FlashConfigPort {
+pub struct FlashConfigAdapter {
     firmware_info: FirmwareInfo,
     heater_options: HeaterOptions,
     network_info: NetworkInfo,
     pid_gains: PidGains,
 }
 
-impl FlashConfigPort {
+impl FlashConfigAdapter {
     pub fn new(storage: &mut FlashStorage<'_>) -> Result<Self, ConfigError> {
         let mut record = [0; RECORD_SIZE];
 
@@ -166,7 +166,7 @@ impl FlashConfigPort {
     }
 }
 
-impl ConfigPort for FlashConfigPort {
+impl ConfigPort for FlashConfigAdapter {
     fn read_heater_options(&self) -> &HeaterOptions {
         &self.heater_options
     }

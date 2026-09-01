@@ -1,6 +1,6 @@
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::gpio::port::OutputPort;
-use crate::library::actor::Actor;
+use crate::library::actor::interface::Actor;
 
 pub struct BrewActor<P, V> {
     pump_output_port: P,

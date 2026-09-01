@@ -1,17 +1,23 @@
-use super::implementation::MessagingService;
-use super::interface::{MessagingError, MessagingEvent};
+use super::protocol::{MessagingError, MessagingEvent};
+
+use super::task::messaging_task;
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
+use crate::domain::config::port::NetworkInfo;
 use crate::domain::update::protocol::UpdateMessage;
+use crate::library::actor::model::ActorRef;
+use crate::library::network::implementation::NetworkStackImpl;
 
-use crate::library::network::ROOT_CA;
+use crate::library::network::implementation::ROOT_CA;
 
 use core::ffi::CStr;
+use embassy_executor::Spawner;
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::{Duration, Timer};
-use mbedtls_rs::{Certificate, ClientSessionConfig, Session, SessionConfig, X509};
+use heapless::String;
+use mbedtls_rs::{Certificate, ClientSessionConfig, Session, SessionConfig};
 use rust_mqtt::Bytes;
 use rust_mqtt::buffer::AllocBuffer;
 use rust_mqtt::client::event::Event;
@@ -19,13 +25,46 @@ use rust_mqtt::client::options::{ConnectOptions, PublicationOptions, Subscriptio
 use rust_mqtt::client::Client;
 use rust_mqtt::types::{MqttBinary, MqttString, TopicFilter, TopicName};
 
+use mbedtls_rs::X509;
+
 const SOCKET_BUFFER_SIZE: usize = 4096;
 const JSON_BUFFER_SIZE: usize = 256;
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
+const TOPIC_CAPACITY: usize = 96;
 
 type MqttClient<'a> = Client<'a, Session<'a, TcpSocket<'a>>, AllocBuffer, 3, 1, 1, 0>;
 
-impl MessagingService {
+pub struct MqttMessagingImpl {
+    network: &'static NetworkStackImpl,
+    hostname: String<64>,
+    port: u16,
+    client_id: String<64>,
+    username: String<64>,
+    password: String<64>,
+    topic_prefix: String<64>,
+    boiler: ActorRef<BoilerMessage>,
+    brew: ActorRef<BrewMessage>,
+    update: ActorRef<UpdateMessage>,
+}
+
+impl MqttMessagingImpl {
+    pub fn new(network: &'static NetworkStackImpl, info: &NetworkInfo, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, spawner: Spawner) {
+        let implementation = Self { network, hostname: info.mqtt_hostname.clone(), port: info.mqtt_port, client_id: info.mqtt_client_id.clone(), username: info.mqtt_username.clone(), password: info.mqtt_password.clone(), topic_prefix: info.mqtt_topic_prefix.clone(), boiler, brew, update };
+
+        spawner.spawn(messaging_task(implementation).unwrap());
+    }
+
+    fn topic(&self, suffix: &str) -> Result<String<TOPIC_CAPACITY>, MessagingError> {
+        let mut topic = String::new();
+
+        topic.push_str(self.topic_prefix.as_str()).map_err(|_| MessagingError::Config)?;
+        topic.push_str(suffix).map_err(|_| MessagingError::Config)?;
+
+        Ok(topic)
+    }
+}
+
+impl MqttMessagingImpl {
     pub async fn run(self) -> ! {
         loop {
             if let Err(_) = self.connect_and_serve().await {

@@ -1,8 +1,8 @@
 use crate::domain::config::port::{ConfigPort, FirmwareInfo};
 use crate::domain::update::port::{UpdateConfirmation, UpdateError, UpdatePort};
-use crate::library::network::{NetworkStack};
+use crate::library::network::implementation::NetworkStackImpl;
 
-use crate::library::network::ROOT_CA;
+use crate::library::network::implementation::ROOT_CA;
 
 use alloc::sync::Arc;
 use core::ffi::CStr;
@@ -35,20 +35,20 @@ static TCP_STATE: StaticCell<TcpClientState<1, 4096, 4096>> = StaticCell::new();
 
 type FirmwareHttpClient<'a> = HttpClient<'a, TcpClient<'static, 1, 4096, 4096>, DnsSocket<'static>>;
 
-pub struct EspUpdatePort<C> {
-    network: &'static NetworkStack,
+pub struct EspUpdateAdapter<C> {
+    network: &'static NetworkStackImpl,
     flash: FlashStorage<'static>,
     config: Arc<C>,
 }
 
-impl<C> EspUpdatePort<C> where C: ConfigPort {
+impl<C> EspUpdateAdapter<C> where C: ConfigPort {
     pub fn initialize(flash: &mut FlashStorage<'_>) -> Result<(), UpdateError> {
         OtaUpdater::new(flash, &mut [0; PARTITION_TABLE_MAX_LEN]).map_err(|_| UpdateError::InvalidPartitionTable)?;
 
         Ok(())
     }
 
-    pub fn new(network: &'static NetworkStack, flash: FlashStorage<'static>, config: Arc<C>) -> Self {
+    pub fn new(network: &'static NetworkStackImpl, flash: FlashStorage<'static>, config: Arc<C>) -> Self {
         Self { network, flash, config }
     }
 
@@ -187,7 +187,7 @@ impl<C> EspUpdatePort<C> where C: ConfigPort {
     }
 }
 
-impl<C> UpdatePort for EspUpdatePort<C> where C: ConfigPort {
+impl<C> UpdatePort for EspUpdateAdapter<C> where C: ConfigPort {
     async fn update(&mut self) -> Result<(), UpdateError> {
         self.network.stack.wait_config_up().await;
         self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str()).await.map_err(|_| UpdateError::Time)?;

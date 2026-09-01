@@ -2,7 +2,8 @@ use super::port::{OutputPort, TemperatureSensorPort};
 use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
 
 use crate::domain::clock::port::TimerPort;
-use crate::library::actor::{Actor, Subscriber};
+use crate::library::actor::interface::Actor;
+use crate::library::actor::model::Subscriber;
 
 use heapless::Vec;
 

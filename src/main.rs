@@ -4,10 +4,10 @@
 extern crate alloc;
 extern crate esp_backtrace;
 
-use crate::adapter::clock::EspTimerPort;
-use crate::adapter::config::FlashConfigPort;
-use crate::adapter::gpio::{Ds18b20TemperaturePort, EspInputPort, EspOutputPort};
-use crate::adapter::update::EspUpdatePort;
+use crate::adapter::clock::EspTimerAdapter;
+use crate::adapter::config::FlashConfigAdapter;
+use crate::adapter::gpio::{Ds18b20TemperatureAdapter, EspInputAdapter, EspOutputAdapter};
+use crate::adapter::update::EspUpdateAdapter;
 use crate::domain::config::port::ConfigPort;
 use crate::domain::boiler::actor::BoilerActor;
 use crate::domain::boiler::protocol::BoilerMessage;
@@ -19,9 +19,9 @@ use crate::domain::gpio::actor::{LightActor, TemperatureSensorActor};
 use crate::domain::gpio::protocol::{LightMessage, TemperatureSensorMessage};
 use crate::domain::update::actor::UpdateActor;
 use crate::domain::update::protocol::UpdateMessage;
-use crate::library::actor::EmbassyMailbox;
-use crate::library::network::NetworkStack;
-use crate::messaging::MessagingService;
+use crate::library::actor::implementation::EmbassyMailboxImpl;
+use crate::library::messaging::implementation::MqttMessagingImpl;
+use crate::library::network::implementation::NetworkStackImpl;
 
 use alloc::sync::Arc;
 use embassy_executor::Spawner;
@@ -40,19 +40,18 @@ use embassy_futures::join::join3;
 mod adapter;
 mod domain;
 mod library;
-mod messaging;
 
 const TICK_INTERVALL: Duration = Duration::from_millis(100);
 
-static BOILER_ACTOR_MAILBOX: EmbassyMailbox<BoilerMessage, 8> = EmbassyMailbox::new();
-static BREW_ACTOR_MAILBOX: EmbassyMailbox<BrewMessage, 8> = EmbassyMailbox::new();
-static BUTTON_ACTOR_MAILBOX: EmbassyMailbox<ButtonMessage, 8> = EmbassyMailbox::new();
-static WATER_ACTOR_MAILBOX: EmbassyMailbox<WaterMessage, 8> = EmbassyMailbox::new();
-static STATUS_LIGHT_ACTOR_MAILBOX: EmbassyMailbox<LightMessage, 1> = EmbassyMailbox::new();
-static POWER_LIGHT_ACTOR_MAILBOX: EmbassyMailbox<LightMessage, 1> = EmbassyMailbox::new();
-static TEMPERATURE_SENSOR_ACTOR_MAILBOX: EmbassyMailbox<TemperatureSensorMessage, 1> = EmbassyMailbox::new();
-static UPDATE_ACTOR_MAILBOX: EmbassyMailbox<UpdateMessage, 1> = EmbassyMailbox::new();
-static NETWORK_STACK: StaticCell<NetworkStack> = StaticCell::new();
+static BOILER_ACTOR_MAILBOX: EmbassyMailboxImpl<BoilerMessage, 8> = EmbassyMailboxImpl::new();
+static BREW_ACTOR_MAILBOX: EmbassyMailboxImpl<BrewMessage, 8> = EmbassyMailboxImpl::new();
+static BUTTON_ACTOR_MAILBOX: EmbassyMailboxImpl<ButtonMessage, 8> = EmbassyMailboxImpl::new();
+static WATER_ACTOR_MAILBOX: EmbassyMailboxImpl<WaterMessage, 8> = EmbassyMailboxImpl::new();
+static STATUS_LIGHT_ACTOR_MAILBOX: EmbassyMailboxImpl<LightMessage, 1> = EmbassyMailboxImpl::new();
+static POWER_LIGHT_ACTOR_MAILBOX: EmbassyMailboxImpl<LightMessage, 1> = EmbassyMailboxImpl::new();
+static TEMPERATURE_SENSOR_ACTOR_MAILBOX: EmbassyMailboxImpl<TemperatureSensorMessage, 1> = EmbassyMailboxImpl::new();
+static UPDATE_ACTOR_MAILBOX: EmbassyMailboxImpl<UpdateMessage, 1> = EmbassyMailboxImpl::new();
+static NETWORK_STACK: StaticCell<NetworkStackImpl> = StaticCell::new();
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -67,22 +66,22 @@ async fn main(spawner: Spawner) {
 
     let mut flash = FlashStorage::new(peripherals.FLASH);
 
-    EspUpdatePort::<FlashConfigPort>::initialize(&mut flash).unwrap();
+    EspUpdateAdapter::<FlashConfigAdapter>::initialize(&mut flash).unwrap();
 
-    let config_port = Arc::new(FlashConfigPort::new(&mut flash).unwrap());
-    let heating_output_port = EspOutputPort::new(peripherals.GPIO11);
-    let status_light_output_port = EspOutputPort::new(peripherals.GPIO12);
-    let power_light_output_port = EspOutputPort::new(peripherals.GPIO13);
-    let pump_output_port = EspOutputPort::new(peripherals.GPIO14);
-    let temperature_port = Ds18b20TemperaturePort::new(peripherals.GPIO4).unwrap();
-    let valve_output_port = EspOutputPort::new(peripherals.GPIO10);
-    let power_input_port = EspInputPort::new(peripherals.GPIO20, Pull::Up);
-    let status_input_port = EspInputPort::new(peripherals.GPIO19, Pull::Up);
-    let water_input_port = EspInputPort::new(peripherals.GPIO21, Pull::Up);
+    let config_adapter = Arc::new(FlashConfigAdapter::new(&mut flash).unwrap());
+    let heating_output_adapter = EspOutputAdapter::new(peripherals.GPIO11);
+    let status_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO12);
+    let power_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO13);
+    let pump_output_adapter = EspOutputAdapter::new(peripherals.GPIO14);
+    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO4).unwrap();
+    let valve_output_adapter = EspOutputAdapter::new(peripherals.GPIO10);
+    let power_input_adapter = EspInputAdapter::new(peripherals.GPIO20, Pull::Up);
+    let status_input_adapter = EspInputAdapter::new(peripherals.GPIO19, Pull::Up);
+    let water_input_adapter = EspInputAdapter::new(peripherals.GPIO21, Pull::Up);
 
-    let network = NETWORK_STACK.init(NetworkStack::new(peripherals.WIFI, peripherals.LPWR, peripherals.RNG, peripherals.ADC1, config_port.read_network_info(), spawner));
+    let network = NETWORK_STACK.init(NetworkStackImpl::new(peripherals.WIFI, peripherals.LPWR, peripherals.RNG, peripherals.ADC1, config_adapter.read_network_info(), spawner));
 
-    let update_port = EspUpdatePort::new(network, flash, Arc::clone(&config_port));
+    let update_adapter = EspUpdateAdapter::new(network, flash, Arc::clone(&config_adapter));
 
     let boiler_actor_ref = BOILER_ACTOR_MAILBOX.actor_ref();
     let brew_actor_ref = BREW_ACTOR_MAILBOX.actor_ref();
@@ -93,16 +92,16 @@ async fn main(spawner: Spawner) {
     let temperature_sensor_actor_ref = TEMPERATURE_SENSOR_ACTOR_MAILBOX.actor_ref();
     let update_actor_ref = UPDATE_ACTOR_MAILBOX.actor_ref();
 
-    spawner.spawn(messaging_task(MessagingService::new(network, config_port.read_network_info(), boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone())).unwrap());
+    MqttMessagingImpl::new(network, config_adapter.read_network_info(), boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone(), spawner);
 
-    let boiler_actor = BoilerActor::new(boiler_actor_ref.clone(), Arc::clone(&config_port), heating_output_port, status_light_actor_ref.clone());
-    let brew_actor = BrewActor::new(pump_output_port, valve_output_port);
-    let button_actor = ButtonActor::new(button_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_input_port, status_input_port, status_light_actor_ref.clone(), power_light_actor_ref.clone(), update_actor_ref.clone());
-    let water_actor = WaterActor::new(water_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), water_input_port);
-    let power_light_actor = LightActor::new(power_light_output_port, EspTimerPort::new());
-    let status_light_actor = LightActor::new(status_light_output_port, EspTimerPort::new());
-    let temperature_sensor_actor = TemperatureSensorActor::new(temperature_port, Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());
-    let update_actor = UpdateActor::new(update_actor_ref, update_port, button_actor_ref, water_actor_ref, boiler_actor_ref, brew_actor_ref, temperature_sensor_actor_ref, power_light_actor_ref, status_light_actor_ref);
+    let boiler_actor = BoilerActor::new(boiler_actor_ref.clone(), Arc::clone(&config_adapter), heating_output_adapter, status_light_actor_ref.clone());
+    let brew_actor = BrewActor::new(pump_output_adapter, valve_output_adapter);
+    let button_actor = ButtonActor::new(button_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_input_adapter, status_input_adapter, status_light_actor_ref.clone(), power_light_actor_ref.clone(), update_actor_ref.clone());
+    let water_actor = WaterActor::new(water_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), water_input_adapter);
+    let power_light_actor = LightActor::new(power_light_output_adapter, EspTimerAdapter::new());
+    let status_light_actor = LightActor::new(status_light_output_adapter, EspTimerAdapter::new());
+    let temperature_sensor_actor = TemperatureSensorActor::new(temperature_adapter, Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());
+    let update_actor = UpdateActor::new(update_actor_ref, update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref, brew_actor_ref, temperature_sensor_actor_ref, power_light_actor_ref, status_light_actor_ref);
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), BUTTON_ACTOR_MAILBOX.run(button_actor));
     let actor_group_2 = join3(WATER_ACTOR_MAILBOX.run(water_actor), POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor));
@@ -111,10 +110,6 @@ async fn main(spawner: Spawner) {
     join3(actor_group_1, actor_group_2, actor_group_3).await;
 }
 
-#[embassy_executor::task]
-async fn messaging_task(service: MessagingService) {
-    service.run().await;
-}
 
 async fn event_loop() {
     let boiler_actor = BOILER_ACTOR_MAILBOX.actor_ref();

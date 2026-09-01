@@ -9,11 +9,11 @@ use onewire::{DeviceSearch, OneWire};
 
 use onewire::DS18B20;
 
-pub struct EspOutputPort<'d> {
+pub struct EspOutputAdapter<'d> {
     pin: Output<'d>,
 }
 
-impl<'d> EspOutputPort<'d> {
+impl<'d> EspOutputAdapter<'d> {
     pub fn new(pin: impl OutputPin + 'd) -> Self {
         let pin = Output::new(pin, Level::Low, OutputConfig::default());
 
@@ -21,7 +21,7 @@ impl<'d> EspOutputPort<'d> {
     }
 }
 
-impl OutputPort for EspOutputPort<'_> {
+impl OutputPort for EspOutputAdapter<'_> {
     async fn set_active(&mut self, active: bool) {
         if active {
             self.pin.set_high();
@@ -36,11 +36,11 @@ impl OutputPort for EspOutputPort<'_> {
     }
 }
 
-pub struct EspInputPort<'d> {
+pub struct EspInputAdapter<'d> {
     pin: Input<'d>,
 }
 
-impl<'d> EspInputPort<'d> {
+impl<'d> EspInputAdapter<'d> {
     pub fn new(pin: impl InputPin + 'd, pull: Pull) -> Self {
         let pin = Input::new(pin, InputConfig::default().with_pull(pull));
 
@@ -48,18 +48,18 @@ impl<'d> EspInputPort<'d> {
     }
 }
 
-impl InputPort for EspInputPort<'_> {
+impl InputPort for EspInputAdapter<'_> {
     fn powered_state(&self) -> bool {
         self.pin.is_low()
     }
 }
 
-pub struct Ds18b20TemperaturePort<'d> {
+pub struct Ds18b20TemperatureAdapter<'d> {
     bus: OneWire<Flex<'d>>,
     sensor: DS18B20,
 }
 
-impl<'d> Ds18b20TemperaturePort<'d> {
+impl<'d> Ds18b20TemperatureAdapter<'d> {
     pub fn new(pin: impl Pin + 'd) -> Result<Self, TemperatureSensorError> {
         let mut pin = Flex::new(pin);
 
@@ -79,7 +79,7 @@ impl<'d> Ds18b20TemperaturePort<'d> {
     }
 }
 
-impl TemperatureSensorPort for Ds18b20TemperaturePort<'_> {
+impl TemperatureSensorPort for Ds18b20TemperatureAdapter<'_> {
     async fn read_temperature(&mut self) -> Result<f64, TemperatureSensorError> {
         let mut delay = Delay::new();
 
