@@ -3,7 +3,7 @@ use super::protocol::UpdateMessage;
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
-use crate::domain::controls::protocol::CircuitMessage;
+use crate::domain::controls::protocol::{ButtonMessage, WaterMessage};
 use crate::domain::gpio::protocol::{LightMessage, TemperatureSensorMessage};
 use crate::library::actor::Actor;
 use crate::library::actor::reference::ActorRef;
@@ -17,7 +17,8 @@ const UPDATE_INDICATOR_INTERVAL: Duration = Duration::from_millis(500);
 pub struct UpdateActor<U: UpdatePort> {
     actor_ref: ActorRef<UpdateMessage>,
     update_port: U,
-    circuit_actor: ActorRef<CircuitMessage>,
+    button_actor: ActorRef<ButtonMessage>,
+    water_actor: ActorRef<WaterMessage>,
     boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
     temperature_sensor_actor: ActorRef<TemperatureSensorMessage>,
@@ -26,19 +27,20 @@ pub struct UpdateActor<U: UpdatePort> {
 }
 
 impl<U: UpdatePort> UpdateActor<U> {
-    pub fn new( actor_ref: ActorRef<UpdateMessage>, update_port: U, circuit_actor: ActorRef<CircuitMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, temperature_sensor_actor: ActorRef<TemperatureSensorMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) -> Self {
-        Self { actor_ref, update_port, circuit_actor, boiler_actor, brew_actor, temperature_sensor_actor, power_light_actor, status_light_actor}
+    pub fn new(actor_ref: ActorRef<UpdateMessage>, update_port: U, button_actor: ActorRef<ButtonMessage>, water_actor: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, temperature_sensor_actor: ActorRef<TemperatureSensorMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) -> Self {
+        Self { actor_ref, update_port, button_actor, water_actor, boiler_actor, brew_actor, temperature_sensor_actor, power_light_actor, status_light_actor }
     }
 
     fn acquire_locks(&self) -> bool {
-        let circuit_actor_locked = self.circuit_actor.lock(&self.actor_ref);
+        let button_actor_locked = self.button_actor.lock(&self.actor_ref);
+        let water_actor_locked = self.water_actor.lock(&self.actor_ref);
         let boiler_actor_locked = self.boiler_actor.lock(&self.actor_ref);
         let brew_actor_locked = self.brew_actor.lock(&self.actor_ref);
         let temperature_sensor_actor_locked = self.temperature_sensor_actor.lock(&self.actor_ref);
         let power_light_actor_locked = self.power_light_actor.lock(&self.actor_ref);
         let status_light_actor_locked = self.status_light_actor.lock(&self.actor_ref);
 
-        circuit_actor_locked && boiler_actor_locked && brew_actor_locked && temperature_sensor_actor_locked && power_light_actor_locked && status_light_actor_locked
+        button_actor_locked && water_actor_locked && boiler_actor_locked && brew_actor_locked && temperature_sensor_actor_locked && power_light_actor_locked && status_light_actor_locked
     }
 
     fn release_locks(&self) {
@@ -47,7 +49,8 @@ impl<U: UpdatePort> UpdateActor<U> {
         self.temperature_sensor_actor.unlock(&self.actor_ref);
         self.brew_actor.unlock(&self.actor_ref);
         self.boiler_actor.unlock(&self.actor_ref);
-        self.circuit_actor.unlock(&self.actor_ref);
+        self.water_actor.unlock(&self.actor_ref);
+        self.button_actor.unlock(&self.actor_ref);
     }
 
     fn cleanup(&self) {
