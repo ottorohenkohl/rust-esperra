@@ -71,7 +71,6 @@ where P: InputPort, S: InputPort, W: InputPort {
                 self.status_light_actor.unlock(&self.actor_ref);
 
                 self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
-                self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
             }
             _ => {}
         }
@@ -85,10 +84,20 @@ where P: InputPort, S: InputPort, W: InputPort {
 
     fn handle_water_input(&self) {
         if self.water_input_port.powered_state() {
+            self.boiler_actor.unlock(&self.actor_ref);
+            self.brew_actor.unlock(&self.actor_ref);
+
+            self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
+
             return
         }
 
-        self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
+        self.boiler_actor.lock(&self.actor_ref);
+        self.brew_actor.lock(&self.actor_ref);
+
+        self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
+        self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
+        self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
     }
 }
 

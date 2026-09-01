@@ -31,6 +31,8 @@ impl<P, T> Actor for LightActor<P, T> where P: OutputPort, T: TimerPort {
                     self.output_port.invert_state().await;
                     self.timer_port.wait_for(200).await;
                 }
+
+                self.timer_port.wait_for(800).await;
             }
         }
     }

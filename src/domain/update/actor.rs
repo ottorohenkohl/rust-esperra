@@ -58,14 +58,10 @@ impl<U: UpdatePort> UpdateActor<U> {
         self.release_locks();
     }
 
-    fn blink_once(&self) {
-        self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
-        self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
-    }
-
-    async fn blink_update_indicator( actor_ref: ActorRef<UpdateMessage>, power_light_actor: ActorRef<LightMessage>) {
+    async fn blink_update_indicator( actor_ref: ActorRef<UpdateMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) {
         loop {
             power_light_actor.tell(Some(&actor_ref), LightMessage::BlinkTimes(1));
+            status_light_actor.tell(Some(&actor_ref), LightMessage::BlinkTimes(1));
 
             Timer::after(UPDATE_INDICATOR_INTERVAL).await;
         }
@@ -76,8 +72,6 @@ impl<U: UpdatePort> UpdateActor<U> {
             self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
             self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
 
-            self.blink_once();
-
             Timer::after(SAFE_SHUTDOWN_DELAY).await;
 
             match self.update_port.confirm() {
@@ -85,11 +79,12 @@ impl<U: UpdatePort> UpdateActor<U> {
                 Ok(UpdateConfirmation::NotPending) => {
                     let actor_ref = self.actor_ref.clone();
                     let power_light_actor = self.power_light_actor.clone();
+                    let status_light_actor = self.status_light_actor.clone();
 
                     let result = {
                         let update = self.update_port.update();
 
-                        select(update, Self::blink_update_indicator(actor_ref, power_light_actor)).await
+                        select(update, Self::blink_update_indicator(actor_ref, power_light_actor, status_light_actor)).await
                     };
 
                     if let Either::First(Err(_)) = result {

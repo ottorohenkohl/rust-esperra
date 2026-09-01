@@ -17,17 +17,17 @@ pub struct BoilerActor<C, H> {
     cycle_start: Instant,
     heating_output_port: H,
     pid_service: PidService<C>,
-    power_light_actor: ActorRef<LightMessage>
+    status_light_actor: ActorRef<LightMessage>
 }
 
 impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
-    pub fn new(actor_ref: ActorRef<BoilerMessage>, config: Arc<C>, heating_output_port: H, power_light_actor: ActorRef<LightMessage>) -> Self {
+    pub fn new(actor_ref: ActorRef<BoilerMessage>, config: Arc<C>, heating_output_port: H, status_light_actor: ActorRef<LightMessage>) -> Self {
         let pid_service = PidService::new(Arc::clone(&config));
         let cycle_start = Instant::now();
 
         let current_temperature = 21.0;
 
-        Self { actor_ref, config, current_temperature, cycle_start, heating_output_port, pid_service, power_light_actor }
+        Self { actor_ref, config, current_temperature, cycle_start, heating_output_port, pid_service, status_light_actor }
     }
 
     fn update_cycle(&mut self) {
@@ -65,10 +65,10 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
 
         match self.current_temperature {
             current_temperature if (lower_bound..upper_bound).contains(&current_temperature) => {
-                self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
+                self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
             }
             _ => {
-                self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
+                self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
             }
         }
     }
