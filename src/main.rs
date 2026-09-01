@@ -68,7 +68,7 @@ async fn main(spawner: Spawner) {
     let power_light_output_port = EspOutputPort::new(peripherals.GPIO13);
     let pump_output_port = EspOutputPort::new(peripherals.GPIO14);
     let temperature_port = Ds18b20TemperaturePort::new(peripherals.GPIO4).unwrap();
-    let valve_output_port = EspOutputPort::new(peripherals.GPI10);
+    let valve_output_port = EspOutputPort::new(peripherals.GPIO10);
     let power_input_port = EspInputPort::new(peripherals.GPIO20, Pull::Up);
     let status_input_port = EspInputPort::new(peripherals.GPIO19, Pull::Up);
     let water_input_port = EspInputPort::new(peripherals.GPIO21, Pull::Up);
