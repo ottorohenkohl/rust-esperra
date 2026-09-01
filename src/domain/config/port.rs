@@ -43,4 +43,6 @@ pub struct NetworkInfo {
     pub mqtt_port: u16,
     pub mqtt_username: String<64>,
     pub mqtt_password: String<64>,
+    pub mqtt_client_id: String<64>,
+    pub mqtt_topic_prefix: String<64>,
 }

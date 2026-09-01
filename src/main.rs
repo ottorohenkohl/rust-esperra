@@ -21,6 +21,7 @@ use crate::domain::update::actor::UpdateActor;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::EmbassyMailbox;
 use crate::library::network::NetworkStack;
+use crate::messaging::MessagingService;
 
 use alloc::sync::Arc;
 use embassy_executor::Spawner;
@@ -39,6 +40,7 @@ use embassy_futures::join::join3;
 mod adapter;
 mod domain;
 mod library;
+mod messaging;
 
 const TICK_INTERVALL: Duration = Duration::from_millis(100);
 
@@ -91,6 +93,8 @@ async fn main(spawner: Spawner) {
     let temperature_sensor_actor_ref = TEMPERATURE_SENSOR_ACTOR_MAILBOX.actor_ref();
     let update_actor_ref = UPDATE_ACTOR_MAILBOX.actor_ref();
 
+    spawner.spawn(messaging_task(MessagingService::new(network, config_port.read_network_info(), boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone())).unwrap());
+
     let boiler_actor = BoilerActor::new(boiler_actor_ref.clone(), Arc::clone(&config_port), heating_output_port, status_light_actor_ref.clone());
     let brew_actor = BrewActor::new(pump_output_port, valve_output_port);
     let button_actor = ButtonActor::new(button_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_input_port, status_input_port, status_light_actor_ref.clone(), power_light_actor_ref.clone(), update_actor_ref.clone());
@@ -105,6 +109,11 @@ async fn main(spawner: Spawner) {
     let actor_group_3 = join3(TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor), UPDATE_ACTOR_MAILBOX.run(update_actor), event_loop());
 
     join3(actor_group_1, actor_group_2, actor_group_3).await;
+}
+
+#[embassy_executor::task]
+async fn messaging_task(service: MessagingService) {
+    service.run().await;
 }
 
 async fn event_loop() {

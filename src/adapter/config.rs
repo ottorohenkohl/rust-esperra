@@ -42,6 +42,8 @@ impl FlashConfigPort {
                 mqtt_port: Self::read_u16(&record, 572),
                 mqtt_username: Self::read_string(&record, 574, 64),
                 mqtt_password: Self::read_string(&record, 638, 64),
+                mqtt_client_id: Self::read_string(&record, 702, 64),
+                mqtt_topic_prefix: Self::read_string(&record, 766, 64),
             };
             let pid_gains = PidGains {
                 k_proportional: Self::read_f64(&record, 36),
@@ -103,6 +105,8 @@ impl FlashConfigPort {
         Self::write_u16(&mut record, 572, self.network_info.mqtt_port);
         Self::write_string(&mut record, 574, &self.network_info.mqtt_username);
         Self::write_string(&mut record, 638, &self.network_info.mqtt_password);
+        Self::write_string(&mut record, 702, &self.network_info.mqtt_client_id);
+        Self::write_string(&mut record, 766, &self.network_info.mqtt_topic_prefix);
 
         record
     }
@@ -151,12 +155,14 @@ impl FlashConfigPort {
         let ntp_server = String::try_from(option_env!("ESPERRA_NTP_SERVER").unwrap_or("pool.ntp.org")).unwrap();
         let wifi_ssid = String::try_from(option_env!("ESPERRA_WIFI_SSID").unwrap_or("")).unwrap();
         let wifi_password = String::try_from(option_env!("ESPERRA_WIFI_PASSWORD").unwrap_or("")).unwrap();
-        let mqtt_hostname = String::try_from(option_env!("ESPERRA_MQTT_HOSTNAME").unwrap_or("")).unwrap();
+        let mqtt_hostname = String::try_from(option_env!("ESPERRA_MQTT_HOSTNAME").unwrap_or("mqtt.rohenkohl.dev")).unwrap();
         let mqtt_port = option_env!("ESPERRA_MQTT_PORT").unwrap_or("8883").parse().unwrap();
         let mqtt_username = String::try_from(option_env!("ESPERRA_MQTT_USERNAME").unwrap_or("")).unwrap();
         let mqtt_password = String::try_from(option_env!("ESPERRA_MQTT_PASSWORD").unwrap_or("")).unwrap();
+        let mqtt_client_id = String::try_from(option_env!("ESPERRA_MQTT_CLIENT_ID").unwrap_or("esperra")).unwrap();
+        let mqtt_topic_prefix = String::try_from(option_env!("ESPERRA_MQTT_TOPIC_PREFIX").unwrap_or("esperra")).unwrap();
 
-        NetworkInfo { ntp_server, wifi_ssid, wifi_password, mqtt_hostname, mqtt_port, mqtt_username, mqtt_password }
+        NetworkInfo { ntp_server, wifi_ssid, wifi_password, mqtt_hostname, mqtt_port, mqtt_username, mqtt_password, mqtt_client_id, mqtt_topic_prefix }
     }
 }
 
