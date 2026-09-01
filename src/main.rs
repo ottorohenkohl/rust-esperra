@@ -8,6 +8,7 @@ use crate::adapter::clock::EspTimerPort;
 use crate::adapter::config::FlashConfigPort;
 use crate::adapter::gpio::{Ds18b20TemperaturePort, EspInputPort, EspOutputPort};
 use crate::adapter::update::EspUpdatePort;
+use crate::domain::config::port::{ConfigPort, NetworkInfo};
 use crate::domain::boiler::actor::BoilerActor;
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::actor::BrewActor;
@@ -21,15 +22,21 @@ use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::mailbox::EmbassyMailbox;
 
 use alloc::sync::Arc;
-use embassy_executor::Spawner;
+use embassy_executor::{Spawner, task};
+use embassy_net::{Config as NetworkConfig, Runner, Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_hal::Config;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::Pull;
 use esp_hal::interrupt::software::SoftwareInterruptControl;
+use esp_hal::peripherals::WIFI;
+use esp_hal::rng::Rng;
 use esp_hal::timer::timg::TimerGroup;
+use esp_radio::wifi::sta::StationConfig;
+use esp_radio::wifi::{Config as WifiConfig, ControllerConfig, Interface, WifiController};
 use esp_storage::FlashStorage;
 use heapless::Vec;
+use static_cell::StaticCell;
 
 use embassy_futures::join::join3;
 
@@ -47,6 +54,7 @@ static STATUS_LIGHT_ACTOR_MAILBOX: EmbassyMailbox<LightMessage, 1> = EmbassyMail
 static POWER_LIGHT_ACTOR_MAILBOX: EmbassyMailbox<LightMessage, 1> = EmbassyMailbox::new();
 static TEMPERATURE_SENSOR_ACTOR_MAILBOX: EmbassyMailbox<TemperatureSensorMessage, 1> = EmbassyMailbox::new();
 static UPDATE_ACTOR_MAILBOX: EmbassyMailbox<UpdateMessage, 1> = EmbassyMailbox::new();
+static NETWORK_STACK_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -73,7 +81,10 @@ async fn main(spawner: Spawner) {
     let power_input_port = EspInputPort::new(peripherals.GPIO20, Pull::Up);
     let status_input_port = EspInputPort::new(peripherals.GPIO19, Pull::Up);
     let water_input_port = EspInputPort::new(peripherals.GPIO21, Pull::Up);
-    let update_port = EspUpdatePort::new(peripherals.WIFI, peripherals.LPWR, peripherals.RNG, peripherals.ADC1, flash, Arc::clone(&config_port), spawner);
+
+    let network_stack = setup_network(peripherals.WIFI, config_port.read_network_info(), spawner);
+
+    let update_port = EspUpdatePort::new(network_stack, peripherals.LPWR, peripherals.RNG, peripherals.ADC1, flash, Arc::clone(&config_port));
 
     let boiler_actor_ref = BOILER_ACTOR_MAILBOX.actor_ref();
     let brew_actor_ref = BREW_ACTOR_MAILBOX.actor_ref();
@@ -114,4 +125,37 @@ async fn event_loop() {
 
         Timer::after(TICK_INTERVALL).await;
     }
+}
+
+fn setup_network(wifi: WIFI<'static>, network_info: &NetworkInfo, spawner: Spawner) -> Stack<'static> {
+    let station = WifiConfig::Station(StationConfig::default().with_ssid(network_info.wifi_ssid.as_str()).with_password(network_info.wifi_password.as_str().into()));
+    let controller_config = ControllerConfig::default().with_initial_config(station);
+
+    let (controller, interfaces) = esp_radio::wifi::new(wifi, controller_config).unwrap();
+
+    let random = Rng::new();
+    let network_config = NetworkConfig::dhcpv4(Default::default());
+
+    let (stack, runner) = embassy_net::new(interfaces.station, network_config, NETWORK_STACK_RESOURCES.init(StackResources::new()), (random.random() as u64) << 32 | random.random() as u64);
+
+    spawner.spawn(connection_task(controller).unwrap());
+    spawner.spawn(network_task(runner).unwrap());
+
+    stack
+}
+
+#[task]
+async fn connection_task(mut controller: WifiController<'static>) {
+    loop {
+        if controller.connect_async().await.is_ok() {
+            let _ = controller.wait_for_disconnect_async().await;
+        }
+
+        Timer::after(Duration::from_secs(5)).await;
+    }
+}
+
+#[task]
+async fn network_task(mut runner: Runner<'static, Interface<'static>>) {
+    runner.run().await;
 }

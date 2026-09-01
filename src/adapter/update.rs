@@ -1,24 +1,20 @@
-use crate::domain::config::port::{ConfigPort, FirmwareInfo, NetworkInfo};
+use crate::domain::config::port::{ConfigPort, FirmwareInfo};
 use crate::domain::update::port::{UpdateConfirmation, UpdateError, UpdatePort};
 
 use alloc::sync::Arc;
 use core::ffi::CStr;
 use core::fmt::Write;
 use core::net::{IpAddr, SocketAddr};
-use embassy_executor::{Spawner};
 use embassy_net::dns::{DnsQueryType, DnsSocket};
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_net::udp::{PacketMetadata, UdpSocket};
-use embassy_net::{Runner, Stack, StackResources};
-use embassy_time::{Duration, Timer};
+use embassy_net::Stack;
 use embedded_io_async::Read;
 use embedded_storage::Storage;
 use esp_bootloader_esp_idf::ota::OtaImageState;
 use esp_bootloader_esp_idf::ota_updater::OtaUpdater;
-use esp_hal::rng::{Rng, Trng, TrngSource};
+use esp_hal::rng::{Trng, TrngSource};
 use esp_hal::rtc_cntl::Rtc;
-use esp_radio::wifi::sta::StationConfig;
-use esp_radio::wifi::{ControllerConfig, Interface, WifiController};
 use esp_storage::FlashStorage;
 use heapless::String;
 use mbedtls_rs::Tls;
@@ -32,19 +28,13 @@ use sntpc_net_embassy::UdpSocketWrapper;
 use sntpc_time_embassy::EmbassyTimestampGenerator;
 use static_cell::StaticCell;
 
-use embassy_net::Config as NetworkConfig;
-use esp_radio::wifi::Config as WifiConfig;
-
 use core::str::from_utf8;
-use embassy_executor::task;
-use embassy_net;
 use esp_hal::system::software_reset;
-use esp_radio::wifi;
 use mbedtls_rs::sys::hook::{timer::hook_timer, wall_clock::hook_wall_clock};
 use sntpc::get_time;
 
 use esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN;
-use esp_hal::peripherals::{ADC1, LPWR, RNG, WIFI};
+use esp_hal::peripherals::{ADC1, LPWR, RNG};
 use reqwless::X509;
 
 const UPDATE_HEADERS: [(&str, &str); 1] = [("Connection", "close")];
@@ -53,7 +43,6 @@ const ROOT_CA: &[u8] = concat!(include_str!("../../res/isrg-root-x1.pem"), "\0")
 const IMAGE_HEADER_SIZE: usize = 80;
 const FIRMWARE_BUFFER_SIZE: usize = 4096;
 
-static STACK_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
 static TCP_STATE: StaticCell<TcpClientState<1, 4096, 4096>> = StaticCell::new();
 static RTC: StaticCell<Rtc<'static>> = StaticCell::new();
 static TRNG_SOURCE: StaticCell<TrngSource<'static>> = StaticCell::new();
@@ -71,38 +60,19 @@ pub struct EspUpdatePort<C> {
     tls: Tls<'static>,
 }
 
-impl<C> EspUpdatePort<C>
-where C: ConfigPort {
+impl<C> EspUpdatePort<C> where C: ConfigPort {
     pub fn initialize(flash: &mut FlashStorage<'_>) -> Result<(), UpdateError> {
         OtaUpdater::new(flash, &mut [0; PARTITION_TABLE_MAX_LEN]).map_err(|_| UpdateError::InvalidPartitionTable)?;
 
         Ok(())
     }
 
-    pub fn new(wifi: WIFI<'static>, lpwr: LPWR<'static>, rng: RNG<'static>, adc1: ADC1<'static>, flash: FlashStorage<'static>, config: Arc<C>, spawner: Spawner) -> Self {
-        let stack = Self::setup_network(wifi, config.read_network_info(), spawner);
-
+    pub fn new(stack: Stack<'static>, lpwr: LPWR<'static>, rng: RNG<'static>, adc1: ADC1<'static>, flash: FlashStorage<'static>, config: Arc<C>) -> Self {
         let (rtc, tls) = Self::setup_tls(lpwr, rng, adc1);
 
         Self { stack, flash, config, rtc, tls }
     }
 
-    fn setup_network(wifi: WIFI<'static>, network_info: &NetworkInfo, spawner: Spawner) -> Stack<'static> {
-        let station = WifiConfig::Station(StationConfig::default().with_ssid(network_info.wifi_ssid.as_str()).with_password(network_info.wifi_password.as_str().into()));
-        let controller_config = ControllerConfig::default().with_initial_config(station);
-
-        let (controller, interfaces) = wifi::new(wifi, controller_config).unwrap();
-
-        let random = Rng::new();
-        let network_config = NetworkConfig::dhcpv4(Default::default());
-
-        let (stack, runner) = embassy_net::new(interfaces.station, network_config, STACK_RESOURCES.init(StackResources::new()), (random.random() as u64) << 32 | random.random() as u64);
-
-        spawner.spawn(connection_task(controller).unwrap());
-        spawner.spawn(network_task(runner).unwrap());
-
-        stack
-    }
 
     fn setup_tls(lpwr: LPWR<'static>, rng: RNG<'static>, adc1: ADC1<'static>) -> (&'static Rtc<'static>, Tls<'static>) {
         let rtc = RTC.init(Rtc::new(lpwr));
@@ -159,13 +129,14 @@ where C: ConfigPort {
         let firmware_url = Self::latest_firmware_url(firmware_info)?;
         let latest_version = Self::fetch_latest_version(&mut client, firmware_url.as_str()).await?;
 
-        if !Self::is_newer_version(latest_version.as_str(), firmware_info.version.as_str()) {
-            return Ok(false);
+        if Self::is_newer_version(latest_version.as_str(), firmware_info.version.as_str()) {
+            Self::install_firmware(&mut client, &mut self.flash, firmware_url.as_str()).await?;
+
+            return Ok(true)
+
         }
 
-        Self::install_firmware(&mut client, &mut self.flash, firmware_url.as_str()).await?;
-
-        Ok(true)
+        Ok(false)
     }
 
     async fn fetch_latest_version(client: &mut FirmwareHttpClient<'_>, firmware_url: &str) -> Result<String<32>, UpdateError> {
@@ -174,21 +145,21 @@ where C: ConfigPort {
         let mut request = request.headers(&UPDATE_HEADERS);
         let response = request.send(&mut response_buffer).await.map_err(|_| UpdateError::Http)?;
 
-        if !response.status.is_successful() {
-            return Err(UpdateError::Http);
+        if response.status.is_successful() {
+            let mut reader = response.body().reader();
+            let mut image_header = [0; IMAGE_HEADER_SIZE];
+
+            reader.read_exact(&mut image_header).await.map_err(|_| UpdateError::Http)?;
+
+            drop(reader);
+            drop(request);
+
+            let version = Self::image_version(&image_header).ok_or(UpdateError::InvalidImage)?;
+
+            return String::try_from(version).map_err(|_| UpdateError::InvalidImage);
         }
 
-        let mut reader = response.body().reader();
-        let mut image_header = [0; IMAGE_HEADER_SIZE];
-
-        reader.read_exact(&mut image_header).await.map_err(|_| UpdateError::Http)?;
-
-        drop(reader);
-        drop(request);
-
-        let version = Self::image_version(&image_header).ok_or(UpdateError::InvalidImage)?;
-
-        String::try_from(version).map_err(|_| UpdateError::InvalidImage)
+        Err(UpdateError::Http)
     }
 
     async fn install_firmware(client: &mut FirmwareHttpClient<'_>, flash: &mut FlashStorage<'static>, firmware_url: &str) -> Result<(), UpdateError> {
@@ -202,39 +173,39 @@ where C: ConfigPort {
         let mut request = request.headers(&UPDATE_HEADERS);
         let response = request.send(&mut response_buffer).await.map_err(|_| UpdateError::Http)?;
 
-        if !response.status.is_successful() {
-            return Err(UpdateError::Http);
-        }
+        if response.status.is_successful() {
+            let mut reader = response.body().reader();
+            let mut chunk = [0; FIRMWARE_BUFFER_SIZE];
+            let mut offset = 0;
 
-        let mut reader = response.body().reader();
-        let mut chunk = [0; FIRMWARE_BUFFER_SIZE];
-        let mut offset = 0;
+            loop {
+                let read = reader.read(&mut chunk).await.map_err(|_| UpdateError::Http)?;
 
-        loop {
-            let read = reader.read(&mut chunk).await.map_err(|_| UpdateError::Http)?;
+                if read == 0 {
+                    break;
+                }
 
-            if read == 0 {
-                break;
+                if offset + read > partition.partition_size() {
+                    return Err(UpdateError::InvalidImage);
+                }
+
+                partition.write(offset as u32, &chunk[..read]).map_err(|_| UpdateError::Flash)?;
+                offset += read;
             }
 
-            if offset + read > partition.partition_size() {
+            if offset == 0 {
                 return Err(UpdateError::InvalidImage);
             }
 
-            partition.write(offset as u32, &chunk[..read]).map_err(|_| UpdateError::Flash)?;
-            offset += read;
+            drop(partition);
+
+            updater.activate_next_partition().map_err(|_| UpdateError::Flash)?;
+            updater.set_current_ota_state(OtaImageState::New).map_err(|_| UpdateError::Flash)?;
+
+            return Ok(());
         }
 
-        if offset == 0 {
-            return Err(UpdateError::InvalidImage);
-        }
-
-        drop(partition);
-
-        updater.activate_next_partition().map_err(|_| UpdateError::Flash)?;
-        updater.set_current_ota_state(OtaImageState::New).map_err(|_| UpdateError::Flash)?;
-
-        Ok(())
+        Err(UpdateError::Http)
     }
 
     fn latest_firmware_url(firmware_info: &FirmwareInfo) -> Result<String<256>, UpdateError> {
@@ -279,8 +250,7 @@ where C: ConfigPort {
     }
 }
 
-impl<C> UpdatePort for EspUpdatePort<C>
-where C: ConfigPort {
+impl<C> UpdatePort for EspUpdatePort<C> where C: ConfigPort {
     async fn update(&mut self) -> Result<(), UpdateError> {
         self.stack.wait_config_up().await;
         self.synchronize_time().await?;
@@ -304,20 +274,4 @@ where C: ConfigPort {
 
         Ok(UpdateConfirmation::NotPending)
     }
-}
-
-#[task]
-async fn connection_task(mut controller: WifiController<'static>) {
-    loop {
-        if controller.connect_async().await.is_ok() {
-            let _ = controller.wait_for_disconnect_async().await;
-        }
-
-        Timer::after(Duration::from_secs(5)).await;
-    }
-}
-
-#[task]
-async fn network_task(mut runner: Runner<'static, Interface<'static>>) {
-    runner.run().await;
 }
