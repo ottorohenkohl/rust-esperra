@@ -116,8 +116,8 @@ impl FlashConfigPort {
     }
 
     fn default_heater_options() -> HeaterOptions {
-        let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("100000").parse().unwrap();
-        let target_temperature = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE").unwrap_or("65.0").parse().unwrap();
+        let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("100").parse().unwrap();
+        let target_temperature = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE").unwrap_or("94.0").parse().unwrap();
         let target_temperature_interval = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL").unwrap_or("0.5").parse().unwrap();
         let boost_intervall_size = option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("5.0").parse().unwrap();
 
@@ -125,9 +125,9 @@ impl FlashConfigPort {
     }
 
     fn default_pid_gains() -> PidGains {
-        let k_proportional = option_env!("ESPERRA_PID_GAINS_K_PROPORTIONAL").unwrap_or("1.0").parse().unwrap();
-        let k_intergral = option_env!("ESPERRA_PID_GAINS_K_INTERGRAL").unwrap_or("0.0").parse().unwrap();
-        let k_derivative = option_env!("ESPERRA_PID_GAINS_K_DERIVATIVE").unwrap_or("0.0").parse().unwrap();
+        let k_proportional = option_env!("ESPERRA_PID_GAINS_K_PROPORTIONAL").unwrap_or("0.1").parse().unwrap();
+        let k_intergral = option_env!("ESPERRA_PID_GAINS_K_INTERGRAL").unwrap_or("0.2").parse().unwrap();
+        let k_derivative = option_env!("ESPERRA_PID_GAINS_K_DERIVATIVE").unwrap_or("0.3").parse().unwrap();
 
         PidGains { k_proportional, k_intergral, k_derivative }
     }
@@ -141,8 +141,8 @@ impl FlashConfigPort {
 
     fn default_network_info() -> NetworkInfo {
         let ntp_server = String::try_from(option_env!("ESPERRA_NTP_SERVER").unwrap_or("pool.ntp.org")).unwrap();
-        let wifi_ssid = String::try_from(option_env!("ESPERRA_WIFI_SSID").unwrap_or("")).unwrap();
-        let wifi_password = String::try_from(option_env!("ESPERRA_WIFI_PASSWORD").unwrap_or("")).unwrap();
+        let wifi_ssid = String::try_from(option_env!("ESPERRA_WIFI_SSID").unwrap_or("Simulation")).unwrap();
+        let wifi_password = String::try_from(option_env!("ESPERRA_WIFI_PASSWORD").unwrap_or("password")).unwrap();
 
         NetworkInfo { ntp_server, wifi_ssid, wifi_password }
     }

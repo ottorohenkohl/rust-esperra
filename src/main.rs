@@ -37,7 +37,7 @@ mod adapter;
 mod domain;
 mod library;
 
-const TICK_INTERVALL: Duration = Duration::from_millis(100);
+const TICK_INTERVALL: Duration = Duration::from_millis(1000);
 
 static BOILER_ACTOR_MAILBOX: EmbassyMailbox<BoilerMessage, 8> = EmbassyMailbox::new();
 static BREW_ACTOR_MAILBOX: EmbassyMailbox<BrewMessage, 8> = EmbassyMailbox::new();
