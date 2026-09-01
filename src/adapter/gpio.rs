@@ -30,8 +30,9 @@ impl OutputPort for EspOutputPort<'_> {
         }
     }
 
+
     async fn invert_state(&mut self) {
-        let _ = self.set_active(self.pin.is_set_low());
+        self.set_active(self.pin.is_set_low()).await;
     }
 }
 
@@ -49,7 +50,7 @@ impl<'d> EspInputPort<'d> {
 
 impl InputPort for EspInputPort<'_> {
     fn powered_state(&self) -> bool {
-        self.pin.is_high()
+        self.pin.is_low()
     }
 }
 
