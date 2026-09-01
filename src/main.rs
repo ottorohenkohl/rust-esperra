@@ -63,15 +63,15 @@ async fn main(spawner: Spawner) {
     EspUpdatePort::<FlashConfigPort>::initialize(&mut flash).unwrap();
 
     let config_port = Arc::new(FlashConfigPort::new(&mut flash).unwrap());
-    let heating_output_port = EspOutputPort::new(peripherals.GPIO10);
-    let status_light_output_port = EspOutputPort::new(peripherals.GPIO11);
-    let power_light_output_port = EspOutputPort::new(peripherals.GPIO12);
-    let pump_output_port = EspOutputPort::new(peripherals.GPIO13);
+    let heating_output_port = EspOutputPort::new(peripherals.GPIO11);
+    let status_light_output_port = EspOutputPort::new(peripherals.GPIO12);
+    let power_light_output_port = EspOutputPort::new(peripherals.GPIO13);
+    let pump_output_port = EspOutputPort::new(peripherals.GPIO14);
     let temperature_port = Ds18b20TemperaturePort::new(peripherals.GPIO4).unwrap();
-    let valve_output_port = EspOutputPort::new(peripherals.GPIO14);
-    let power_input_port = EspInputPort::new(peripherals.GPIO15, Pull::Up);
-    let status_input_port = EspInputPort::new(peripherals.GPIO16, Pull::Up);
-    let water_input_port = EspInputPort::new(peripherals.GPIO17, Pull::Up);
+    let valve_output_port = EspOutputPort::new(peripherals.GPIO4);
+    let power_input_port = EspInputPort::new(peripherals.GPIO20, Pull::Up);
+    let status_input_port = EspInputPort::new(peripherals.GPIO19, Pull::Up);
+    let water_input_port = EspInputPort::new(peripherals.GPIO21, Pull::Up);
 
     let update_port = EspUpdatePort::new(peripherals.WIFI, peripherals.LPWR, peripherals.RNG, peripherals.ADC1, flash, Arc::clone(&config_port), spawner);
 
