@@ -1,8 +1,8 @@
-pub mod mailbox;
-pub mod reference;
+mod implementation;
+mod interface;
+mod service;
 
-pub trait Actor {
-    type Message;
-
-    async fn handle(&mut self, message: Self::Message);
-}
+#[allow(unused_imports)]
+pub use implementation::{ActorRef, EmbassyMailbox, Envelope, Subscriber};
+#[allow(unused_imports)]
+pub use interface::{Actor, Caller, Mailbox};

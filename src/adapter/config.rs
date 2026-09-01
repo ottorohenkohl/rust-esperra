@@ -8,7 +8,7 @@ use core::str::from_utf8;
 
 const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const MAGIC_RECORD: u16 = 2307;
-const RECORD_SIZE: usize = 512;
+const RECORD_SIZE: usize = 1024;
 
 pub struct FlashConfigPort {
     firmware_info: FirmwareInfo,
@@ -38,6 +38,10 @@ impl FlashConfigPort {
                 ntp_server: Self::read_string(&record, 348, 64),
                 wifi_ssid: Self::read_string(&record, 412, 32),
                 wifi_password: Self::read_string(&record, 444, 64),
+                mqtt_hostname: Self::read_string(&record, 508, 64),
+                mqtt_port: Self::read_u16(&record, 572),
+                mqtt_username: Self::read_string(&record, 574, 64),
+                mqtt_password: Self::read_string(&record, 638, 64),
             };
             let pid_gains = PidGains {
                 k_proportional: Self::read_f64(&record, 36),
@@ -95,6 +99,10 @@ impl FlashConfigPort {
         Self::write_string(&mut record, 348, &self.network_info.ntp_server);
         Self::write_string(&mut record, 412, &self.network_info.wifi_ssid);
         Self::write_string(&mut record, 444, &self.network_info.wifi_password);
+        Self::write_string(&mut record, 508, &self.network_info.mqtt_hostname);
+        Self::write_u16(&mut record, 572, self.network_info.mqtt_port);
+        Self::write_string(&mut record, 574, &self.network_info.mqtt_username);
+        Self::write_string(&mut record, 638, &self.network_info.mqtt_password);
 
         record
     }
@@ -116,7 +124,7 @@ impl FlashConfigPort {
     }
 
     fn default_heater_options() -> HeaterOptions {
-        let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("100").parse().unwrap();
+        let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("1000").parse().unwrap();
         let target_temperature = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE").unwrap_or("94.0").parse().unwrap();
         let target_temperature_interval = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL").unwrap_or("0.5").parse().unwrap();
         let boost_intervall_size = option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("5.0").parse().unwrap();
@@ -141,10 +149,14 @@ impl FlashConfigPort {
 
     fn default_network_info() -> NetworkInfo {
         let ntp_server = String::try_from(option_env!("ESPERRA_NTP_SERVER").unwrap_or("pool.ntp.org")).unwrap();
-        let wifi_ssid = String::try_from(option_env!("ESPERRA_WIFI_SSID").unwrap_or("Simulation")).unwrap();
-        let wifi_password = String::try_from(option_env!("ESPERRA_WIFI_PASSWORD").unwrap_or("password")).unwrap();
+        let wifi_ssid = String::try_from(option_env!("ESPERRA_WIFI_SSID").unwrap_or("")).unwrap();
+        let wifi_password = String::try_from(option_env!("ESPERRA_WIFI_PASSWORD").unwrap_or("")).unwrap();
+        let mqtt_hostname = String::try_from(option_env!("ESPERRA_MQTT_HOSTNAME").unwrap_or("")).unwrap();
+        let mqtt_port = option_env!("ESPERRA_MQTT_PORT").unwrap_or("8883").parse().unwrap();
+        let mqtt_username = String::try_from(option_env!("ESPERRA_MQTT_USERNAME").unwrap_or("")).unwrap();
+        let mqtt_password = String::try_from(option_env!("ESPERRA_MQTT_PASSWORD").unwrap_or("")).unwrap();
 
-        NetworkInfo { ntp_server, wifi_ssid, wifi_password }
+        NetworkInfo { ntp_server, wifi_ssid, wifi_password, mqtt_hostname, mqtt_port, mqtt_username, mqtt_password }
     }
 }
 

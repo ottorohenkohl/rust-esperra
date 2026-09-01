@@ -4,8 +4,7 @@ use super::service::PidService;
 use crate::domain::config::port::ConfigPort;
 use crate::domain::gpio::port::OutputPort;
 use crate::domain::gpio::protocol::LightMessage;
-use crate::library::actor::Actor;
-use crate::library::actor::reference::ActorRef;
+use crate::library::actor::{Actor, ActorRef};
 
 use alloc::sync::Arc;
 use embassy_time::Instant;

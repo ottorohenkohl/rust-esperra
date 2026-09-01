@@ -5,8 +5,7 @@ use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::controls::protocol::{ButtonMessage, WaterMessage};
 use crate::domain::gpio::protocol::{LightMessage, TemperatureSensorMessage};
-use crate::library::actor::Actor;
-use crate::library::actor::reference::ActorRef;
+use crate::library::actor::{Actor, ActorRef};
 
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};

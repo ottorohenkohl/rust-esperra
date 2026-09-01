@@ -1,63 +1,44 @@
 use crate::domain::config::port::{ConfigPort, FirmwareInfo};
 use crate::domain::update::port::{UpdateConfirmation, UpdateError, UpdatePort};
+use crate::library::network::{NetworkStack};
+
+use crate::library::network::ROOT_CA;
 
 use alloc::sync::Arc;
 use core::ffi::CStr;
 use core::fmt::Write;
-use core::net::{IpAddr, SocketAddr};
-use embassy_net::dns::{DnsQueryType, DnsSocket};
+use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
-use embassy_net::udp::{PacketMetadata, UdpSocket};
-use embassy_net::Stack;
 use embedded_io_async::Read;
 use embedded_storage::Storage;
 use esp_bootloader_esp_idf::ota::OtaImageState;
 use esp_bootloader_esp_idf::ota_updater::OtaUpdater;
-use esp_hal::rng::{Trng, TrngSource};
-use esp_hal::rtc_cntl::Rtc;
 use esp_storage::FlashStorage;
 use heapless::String;
-use mbedtls_rs::Tls;
-use mbedtls_rs::sys::hook::backend::embassy::timer::EmbassyTimer;
-use mbedtls_rs::sys::hook::backend::esp::wall_clock::EspRtcWallClock;
 use reqwless::client::{HttpClient, TlsConfig};
 use reqwless::request::{Method, RequestBuilder};
 use reqwless::{Certificate, TlsVersion};
-use sntpc::{NtpContext};
-use sntpc_net_embassy::UdpSocketWrapper;
-use sntpc_time_embassy::EmbassyTimestampGenerator;
 use static_cell::StaticCell;
 
 use core::str::from_utf8;
 use esp_hal::system::software_reset;
-use mbedtls_rs::sys::hook::{timer::hook_timer, wall_clock::hook_wall_clock};
-use sntpc::get_time;
 
 use esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN;
-use esp_hal::peripherals::{ADC1, LPWR, RNG};
 use reqwless::X509;
 
 const UPDATE_HEADERS: [(&str, &str); 1] = [("Connection", "close")];
-const ROOT_CA: &[u8] = concat!(include_str!("../../res/isrg-root-x1.pem"), "\0").as_bytes();
 
 const IMAGE_HEADER_SIZE: usize = 80;
 const FIRMWARE_BUFFER_SIZE: usize = 4096;
 
 static TCP_STATE: StaticCell<TcpClientState<1, 4096, 4096>> = StaticCell::new();
-static RTC: StaticCell<Rtc<'static>> = StaticCell::new();
-static TRNG_SOURCE: StaticCell<TrngSource<'static>> = StaticCell::new();
-static TRNG: StaticCell<Trng> = StaticCell::new();
-static TLS_TIMER: StaticCell<EmbassyTimer> = StaticCell::new();
-static TLS_CLOCK: StaticCell<EspRtcWallClock<&'static Rtc<'static>>> = StaticCell::new();
 
 type FirmwareHttpClient<'a> = HttpClient<'a, TcpClient<'static, 1, 4096, 4096>, DnsSocket<'static>>;
 
 pub struct EspUpdatePort<C> {
-    stack: Stack<'static>,
+    network: &'static NetworkStack,
     flash: FlashStorage<'static>,
     config: Arc<C>,
-    rtc: &'static Rtc<'static>,
-    tls: Tls<'static>,
 }
 
 impl<C> EspUpdatePort<C> where C: ConfigPort {
@@ -67,60 +48,16 @@ impl<C> EspUpdatePort<C> where C: ConfigPort {
         Ok(())
     }
 
-    pub fn new(stack: Stack<'static>, lpwr: LPWR<'static>, rng: RNG<'static>, adc1: ADC1<'static>, flash: FlashStorage<'static>, config: Arc<C>) -> Self {
-        let (rtc, tls) = Self::setup_tls(lpwr, rng, adc1);
-
-        Self { stack, flash, config, rtc, tls }
-    }
-
-
-    fn setup_tls(lpwr: LPWR<'static>, rng: RNG<'static>, adc1: ADC1<'static>) -> (&'static Rtc<'static>, Tls<'static>) {
-        let rtc = RTC.init(Rtc::new(lpwr));
-
-        TRNG_SOURCE.init(TrngSource::new(rng, adc1));
-
-        let trng = TRNG.init(Trng::try_new().unwrap());
-
-        unsafe {
-            hook_timer(Some(TLS_TIMER.init(EmbassyTimer)));
-            hook_wall_clock(Some(TLS_CLOCK.init(EspRtcWallClock::new(rtc))));
-        }
-
-        (rtc, Tls::new(trng).unwrap())
-    }
-
-    async fn synchronize_time(&self) -> Result<(), UpdateError> {
-        let ntp_server = self.config.read_network_info().ntp_server.as_str();
-        let addresses = self.stack.dns_query(ntp_server, DnsQueryType::A).await.map_err(|_| UpdateError::Time)?;
-
-        let address = addresses.first().ok_or(UpdateError::Time)?;
-
-        let mut rx_meta = [PacketMetadata::EMPTY; 1];
-        let mut rx_buffer = [0; 128];
-        let mut tx_meta = [PacketMetadata::EMPTY; 1];
-        let mut tx_buffer = [0; 128];
-
-        let mut socket = UdpSocket::new(self.stack, &mut rx_meta, &mut rx_buffer, &mut tx_meta, &mut tx_buffer);
-
-        socket.bind(0).map_err(|_| UpdateError::Time)?;
-
-        let socket = UdpSocketWrapper::new(socket);
-        let server = SocketAddr::from((IpAddr::from(*address), 123));
-        let context = NtpContext::new(EmbassyTimestampGenerator::default());
-
-        let result = get_time(server, &socket, context).await.map_err(|_| UpdateError::Time)?;
-
-        self.rtc.set_current_time_us(result.sec() as u64 * 1_000_000 + (result.sec_fraction() as u64 * 1_000_000) >> 32);
-
-        Ok(())
+    pub fn new(network: &'static NetworkStack, flash: FlashStorage<'static>, config: Arc<C>) -> Self {
+        Self { network, flash, config }
     }
 
     async fn check_and_install(&mut self) -> Result<bool, UpdateError> {
-        let tcp = TcpClient::new(self.stack, TCP_STATE.init(TcpClientState::new()));
-        let dns = DnsSocket::new(self.stack);
+        let tcp = TcpClient::new(self.network.stack, TCP_STATE.init(TcpClientState::new()));
+        let dns = DnsSocket::new(self.network.stack);
         let root_ca = CStr::from_bytes_with_nul(ROOT_CA).unwrap();
         let certificate = Certificate::new(X509::PEM(root_ca)).map_err(|_| UpdateError::Http)?;
-        let tls_config = TlsConfig::new(TlsVersion::Tls1_2, certificate, None, self.tls.reference());
+        let tls_config = TlsConfig::new(TlsVersion::Tls1_2, certificate, None, self.network.tls.reference());
 
         let mut client = HttpClient::new_with_tls(&tcp, &dns, tls_config);
 
@@ -252,8 +189,8 @@ impl<C> EspUpdatePort<C> where C: ConfigPort {
 
 impl<C> UpdatePort for EspUpdatePort<C> where C: ConfigPort {
     async fn update(&mut self) -> Result<(), UpdateError> {
-        self.stack.wait_config_up().await;
-        self.synchronize_time().await?;
+        self.network.stack.wait_config_up().await;
+        self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str()).await.map_err(|_| UpdateError::Time)?;
 
         if self.check_and_install().await? {
             software_reset();

@@ -39,4 +39,8 @@ pub struct NetworkInfo {
     pub ntp_server: String<64>,
     pub wifi_ssid: String<32>,
     pub wifi_password: String<64>,
+    pub mqtt_hostname: String<64>,
+    pub mqtt_port: u16,
+    pub mqtt_username: String<64>,
+    pub mqtt_password: String<64>,
 }
