@@ -85,7 +85,7 @@ async fn main(spawner: Spawner) {
 
     let boiler_actor = BoilerActor::new(boiler_actor_ref.clone(), Arc::clone(&config_port), heating_output_port, power_light_actor_ref.clone());
     let brew_actor = BrewActor::new(pump_output_port, valve_output_port);
-    let circuit_actor = CircuitActor::new(circuit_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_input_port, status_input_port, status_light_actor_ref.clone(), update_actor_ref.clone(), water_input_port);
+    let circuit_actor = CircuitActor::new(circuit_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_input_port, status_input_port, status_light_actor_ref.clone(), power_light_actor_ref.clone(), update_actor_ref.clone(), water_input_port);
     let power_light_actor = LightActor::new(power_light_output_port, EspTimerPort::new());
     let status_light_actor = LightActor::new(status_light_output_port, EspTimerPort::new());
     let temperature_sensor_actor = TemperatureSensorActor::new(temperature_port, Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());

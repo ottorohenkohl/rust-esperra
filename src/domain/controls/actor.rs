@@ -20,6 +20,7 @@ pub struct CircuitActor<P, S, W> {
     power_input_port: P,
     status_input_port: S,
     status_light_actor: ActorRef<LightMessage>,
+    power_light_actor: ActorRef<LightMessage>,
     update_actor: ActorRef<UpdateMessage>,
     water_input_port: W,
     machine_powered: Option<bool>,
@@ -28,11 +29,11 @@ pub struct CircuitActor<P, S, W> {
 
 impl<P, S, W> CircuitActor<P, S, W>
 where P: InputPort, S: InputPort, W: InputPort {
-    pub fn new( actor_ref: ActorRef<CircuitMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_input_port: P, status_input_port: S, status_light_actor: ActorRef<LightMessage>, update_actor: ActorRef<UpdateMessage>, water_input_port: W) -> Self {
+    pub fn new(actor_ref: ActorRef<CircuitMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_input_port: P, status_input_port: S, status_light_actor: ActorRef<LightMessage>, power_light_actor: ActorRef<LightMessage>, update_actor: ActorRef<UpdateMessage>, water_input_port: W) -> Self {
         let machine_powered = None;
         let power_off_since = None;
 
-        Self { actor_ref, boiler_actor, brew_actor, power_input_port, status_input_port, status_light_actor, update_actor, water_input_port, machine_powered, power_off_since}
+        Self { actor_ref, boiler_actor, brew_actor, power_input_port, status_input_port, status_light_actor, power_light_actor, update_actor, water_input_port, machine_powered, power_off_since}
     }
 
     fn reached_update_interval(&mut self) -> bool {
@@ -49,14 +50,28 @@ where P: InputPort, S: InputPort, W: InputPort {
             (Some(true), false) | (None, false) => {
                 self.power_off_since = Some(Instant::now());
 
+                self.boiler_actor.lock(&self.actor_ref);
+                self.brew_actor.lock(&self.actor_ref);
+                self.power_light_actor.lock(&self.actor_ref);
+                self.status_light_actor.lock(&self.actor_ref);
+
                 self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
+                self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
+                self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(false));
+                self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(false));
             }
             (Some(false), true) | (None, true) => {
                 if self.reached_update_interval() {
                     return self.update_actor.tell(Some(&self.actor_ref), UpdateMessage::Start);
                 }
 
+                self.boiler_actor.unlock(&self.actor_ref);
+                self.brew_actor.unlock(&self.actor_ref);
+                self.power_light_actor.unlock(&self.actor_ref);
+                self.status_light_actor.unlock(&self.actor_ref);
+
                 self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
+                self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
             }
             _ => {}
         }

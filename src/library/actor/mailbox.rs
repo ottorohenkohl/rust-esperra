@@ -7,6 +7,8 @@ use embassy_sync::channel::Channel;
 
 use core::ptr::from_ref;
 
+const UNLOCKED: usize = 0;
+
 pub struct Envelope<Message> {
     pub caller: Option<usize>,
     pub message: Message,
@@ -27,7 +29,7 @@ pub struct EmbassyMailbox<Message, const SIZE: usize> {
 impl<Message: 'static, const SIZE: usize> EmbassyMailbox<Message, SIZE> {
     pub const fn new() -> Self {
         let channel = Channel::new();
-        let lock = AtomicUsize::new(0);
+        let lock = AtomicUsize::new(UNLOCKED);
 
         Self { channel, lock }
     }
@@ -41,7 +43,7 @@ impl<Message: 'static, const SIZE: usize> EmbassyMailbox<Message, SIZE> {
             let envelope = self.channel.receive().await;
             let owner = self.lock.load(Ordering::SeqCst);
 
-            if owner == 0 || envelope.caller == Some(owner) {
+            if owner == UNLOCKED || envelope.caller == Some(owner) {
                 actor.handle(envelope.message).await;
             }
         }
@@ -58,13 +60,13 @@ impl<Message: 'static, const SIZE: usize> Mailbox<Message> for EmbassyMailbox<Me
     }
 
     fn lock(&self, owner: usize) -> bool {
-        match self.lock.compare_exchange(0, owner, Ordering::SeqCst, Ordering::SeqCst) {
+        match self.lock.compare_exchange(UNLOCKED, owner, Ordering::SeqCst, Ordering::SeqCst) {
             Ok(_) => true,
             Err(current_owner) => current_owner == owner,
         }
     }
 
     fn unlock(&self, owner: usize) -> bool {
-        self.lock.compare_exchange(owner, 0, Ordering::SeqCst, Ordering::SeqCst).is_ok()
+        self.lock.compare_exchange(owner, UNLOCKED, Ordering::SeqCst, Ordering::SeqCst).is_ok()
     }
 }
