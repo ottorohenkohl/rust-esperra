@@ -12,7 +12,7 @@ use embassy_time::Instant;
 
 pub struct BoilerActor<C, H> {
     actor_ref: ActorRef<BoilerMessage>,
-    config: Arc<C>,
+    config_port: Arc<C>,
     current_temperature: f64,
     cycle_start: Instant,
     heating_output_port: H,
@@ -21,17 +21,17 @@ pub struct BoilerActor<C, H> {
 }
 
 impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
-    pub fn new(actor_ref: ActorRef<BoilerMessage>, config: Arc<C>, heating_output_port: H, status_light_actor: ActorRef<LightMessage>) -> Self {
-        let pid_service = PidService::new(Arc::clone(&config));
+    pub fn new(actor_ref: ActorRef<BoilerMessage>, config_port: Arc<C>, heating_output_port: H, status_light_actor: ActorRef<LightMessage>) -> Self {
+        let pid_service = PidService::new(Arc::clone(&config_port));
         let cycle_start = Instant::now();
 
         let current_temperature = 21.0;
 
-        Self { actor_ref, config, current_temperature, cycle_start, heating_output_port, pid_service, status_light_actor }
+        Self { actor_ref, config_port, current_temperature, cycle_start, heating_output_port, pid_service, status_light_actor }
     }
 
     fn update_cycle(&mut self) {
-        let heater_options = self.config.read_heater_options();
+        let heater_options = self.config_port.read_heater_options();
         let cycle_elapsed_ms = self.cycle_start.elapsed().as_millis();
 
         if cycle_elapsed_ms >= heater_options.heating_cycle_ms {
@@ -40,7 +40,7 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
     }
 
     fn should_heat(&mut self) -> bool {
-        let heater_options = self.config.read_heater_options();
+        let heater_options = self.config_port.read_heater_options();
         let cycle_elapsed_ms = self.cycle_start.elapsed().as_millis();
 
         if self.current_temperature < heater_options.target_temperature - heater_options.boost_intervall_size {
@@ -56,7 +56,7 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
         self.update_cycle();
 
         let should_heat = self.should_heat();
-        let heater_options = self.config.read_heater_options();
+        let heater_options = self.config_port.read_heater_options();
 
         self.heating_output_port.set_active(should_heat).await;
 

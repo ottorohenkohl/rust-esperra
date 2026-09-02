@@ -1,69 +1,123 @@
 use crate::domain::config::port::{ConfigError, ConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains};
 
+use alloc::sync::Arc;
+use core::cell::RefCell;
+use core::str::from_utf8;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use embedded_storage::{ReadStorage, Storage};
 use esp_storage::FlashStorage;
 use heapless::String;
 
-use core::str::from_utf8;
+use critical_section::Mutex as CriticalSectionMutex;
 
 const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const MAGIC_RECORD: u16 = 2307;
 const RECORD_SIZE: usize = 1024;
 
-pub struct FlashConfigAdapter {
+pub type SharedFlash = Arc<Mutex<CriticalSectionRawMutex, FlashStorage<'static>>>;
+
+struct ConfigState {
     firmware_info: FirmwareInfo,
     heater_options: HeaterOptions,
     network_info: NetworkInfo,
     pid_gains: PidGains,
 }
 
-impl FlashConfigAdapter {
-    pub fn new(storage: &mut FlashStorage<'_>) -> Result<Self, ConfigError> {
+impl ConfigState {
+    fn record(&self) -> [u8; RECORD_SIZE] {
         let mut record = [0; RECORD_SIZE];
+
+        FlashConfigAdapter::write_u16(&mut record, 0, MAGIC_RECORD);
+        FlashConfigAdapter::write_u64(&mut record, 4, self.heater_options.heating_cycle_ms);
+        FlashConfigAdapter::write_f64(&mut record, 12, self.heater_options.target_temperature);
+        FlashConfigAdapter::write_f64(&mut record, 20, self.heater_options.target_temperature_interval);
+        FlashConfigAdapter::write_f64(&mut record, 28, self.heater_options.boost_intervall_size);
+        FlashConfigAdapter::write_f64(&mut record, 36, self.pid_gains.k_proportional);
+        FlashConfigAdapter::write_f64(&mut record, 44, self.pid_gains.k_intergral);
+        FlashConfigAdapter::write_f64(&mut record, 52, self.pid_gains.k_derivative);
+        FlashConfigAdapter::write_string(&mut record, 60, &self.firmware_info.url);
+        FlashConfigAdapter::write_string(&mut record, 316, &self.firmware_info.version);
+        FlashConfigAdapter::write_string(&mut record, 348, &self.network_info.ntp_server);
+        FlashConfigAdapter::write_string(&mut record, 412, &self.network_info.wifi_ssid);
+        FlashConfigAdapter::write_string(&mut record, 444, &self.network_info.wifi_password);
+        FlashConfigAdapter::write_string(&mut record, 508, &self.network_info.mqtt_hostname);
+        FlashConfigAdapter::write_u16(&mut record, 572, self.network_info.mqtt_port);
+        FlashConfigAdapter::write_string(&mut record, 574, &self.network_info.mqtt_username);
+        FlashConfigAdapter::write_string(&mut record, 638, &self.network_info.mqtt_password);
+        FlashConfigAdapter::write_string(&mut record, 702, &self.network_info.mqtt_client_id);
+        FlashConfigAdapter::write_string(&mut record, 766, &self.network_info.mqtt_topic_prefix);
+
+        record
+    }
+}
+
+pub struct FlashConfigAdapter {
+    flash: SharedFlash,
+    state: CriticalSectionMutex<RefCell<ConfigState>>,
+}
+
+impl FlashConfigAdapter {
+    pub async fn new(flash: SharedFlash) -> Result<Self, ConfigError> {
+        let mut record = [0; RECORD_SIZE];
+
+        let mut storage = flash.lock().await;
 
         storage.read(CONFIG_STORAGE_OFFSET, &mut record).map_err(|_| ConfigError::StorageReadFailed)?;
 
-        if Self::read_u16(&record, 0) == MAGIC_RECORD {
-            let firmware_info = FirmwareInfo {
-                url: Self::read_string(&record, 60, 256),
-                version: Self::read_string(&record, 316, 32),
-            };
-            let heater_options = HeaterOptions {
-                heating_cycle_ms: Self::read_u64(&record, 4),
-                target_temperature: Self::read_f64(&record, 12),
-                target_temperature_interval: Self::read_f64(&record, 20),
-                boost_intervall_size: Self::read_f64(&record, 28),
-            };
-            let network_info = NetworkInfo {
-                ntp_server: Self::read_string(&record, 348, 64),
-                wifi_ssid: Self::read_string(&record, 412, 32),
-                wifi_password: Self::read_string(&record, 444, 64),
-                mqtt_hostname: Self::read_string(&record, 508, 64),
-                mqtt_port: Self::read_u16(&record, 572),
-                mqtt_username: Self::read_string(&record, 574, 64),
-                mqtt_password: Self::read_string(&record, 638, 64),
-                mqtt_client_id: Self::read_string(&record, 702, 64),
-                mqtt_topic_prefix: Self::read_string(&record, 766, 64),
-            };
-            let pid_gains = PidGains {
-                k_proportional: Self::read_f64(&record, 36),
-                k_intergral: Self::read_f64(&record, 44),
-                k_derivative: Self::read_f64(&record, 52),
+        let state = if Self::read_u16(&record, 0) == MAGIC_RECORD {
+            ConfigState {
+                firmware_info: FirmwareInfo {
+                    url: Self::read_string(&record, 60, 256),
+                    version: Self::read_string(&record, 316, 32),
+                },
+                heater_options: HeaterOptions {
+                    heating_cycle_ms: Self::read_u64(&record, 4),
+                    target_temperature: Self::read_f64(&record, 12),
+                    target_temperature_interval: Self::read_f64(&record, 20),
+                    boost_intervall_size: Self::read_f64(&record, 28),
+                },
+                network_info: NetworkInfo {
+                    ntp_server: Self::read_string(&record, 348, 64),
+                    wifi_ssid: Self::read_string(&record, 412, 32),
+                    wifi_password: Self::read_string(&record, 444, 64),
+                    mqtt_hostname: Self::read_string(&record, 508, 64),
+                    mqtt_port: Self::read_u16(&record, 572),
+                    mqtt_username: Self::read_string(&record, 574, 64),
+                    mqtt_password: Self::read_string(&record, 638, 64),
+                    mqtt_client_id: Self::read_string(&record, 702, 64),
+                    mqtt_topic_prefix: Self::read_string(&record, 766, 64),
+                },
+                pid_gains: PidGains {
+                    k_proportional: Self::read_f64(&record, 36),
+                    k_intergral: Self::read_f64(&record, 44),
+                    k_derivative: Self::read_f64(&record, 52),
+                },
+            }
+        } else {
+            let state = ConfigState {
+                firmware_info: Self::default_firmware_info(),
+                heater_options: Self::default_heater_options(),
+                network_info: Self::default_network_info(),
+                pid_gains: Self::default_pid_gains(),
             };
 
-            return Ok(Self { firmware_info, heater_options, network_info, pid_gains });
-        }
+            storage.write(CONFIG_STORAGE_OFFSET, &state.record()).map_err(|_| ConfigError::StorageWriteFailed)?;
 
-        let config = Self {
-            firmware_info: Self::default_firmware_info(),
-            heater_options: Self::default_heater_options(),
-            network_info: Self::default_network_info(),
-            pid_gains: Self::default_pid_gains(),
+            state
         };
 
-        storage.write(CONFIG_STORAGE_OFFSET, &config.record()).map_err(|_| ConfigError::StorageWriteFailed)?;
+        drop(storage);
 
-        Ok(config)
+        let state = CriticalSectionMutex::new(RefCell::new(state));
+
+        Ok(Self { flash, state })
+    }
+
+    async fn persist(&self, record: [u8; RECORD_SIZE]) {
+        let mut storage = self.flash.lock().await;
+
+        let _ = storage.write(CONFIG_STORAGE_OFFSET, &record);
     }
 
     fn read_u16(record: &[u8; RECORD_SIZE], offset: usize) -> u16 {
@@ -83,32 +137,6 @@ impl FlashConfigAdapter {
         let length = bytes.iter().position(|byte| *byte == 0 || *byte == 0xff).unwrap_or(bytes.len());
 
         from_utf8(&bytes[..length]).ok().and_then(|value| String::try_from(value).ok()).unwrap_or_default()
-    }
-
-    fn record(&self) -> [u8; RECORD_SIZE] {
-        let mut record = [0; RECORD_SIZE];
-
-        Self::write_u16(&mut record, 0, MAGIC_RECORD);
-        Self::write_u64(&mut record, 4, self.heater_options.heating_cycle_ms);
-        Self::write_f64(&mut record, 12, self.heater_options.target_temperature);
-        Self::write_f64(&mut record, 20, self.heater_options.target_temperature_interval);
-        Self::write_f64(&mut record, 28, self.heater_options.boost_intervall_size);
-        Self::write_f64(&mut record, 36, self.pid_gains.k_proportional);
-        Self::write_f64(&mut record, 44, self.pid_gains.k_intergral);
-        Self::write_f64(&mut record, 52, self.pid_gains.k_derivative);
-        Self::write_string(&mut record, 60, &self.firmware_info.url);
-        Self::write_string(&mut record, 316, &self.firmware_info.version);
-        Self::write_string(&mut record, 348, &self.network_info.ntp_server);
-        Self::write_string(&mut record, 412, &self.network_info.wifi_ssid);
-        Self::write_string(&mut record, 444, &self.network_info.wifi_password);
-        Self::write_string(&mut record, 508, &self.network_info.mqtt_hostname);
-        Self::write_u16(&mut record, 572, self.network_info.mqtt_port);
-        Self::write_string(&mut record, 574, &self.network_info.mqtt_username);
-        Self::write_string(&mut record, 638, &self.network_info.mqtt_password);
-        Self::write_string(&mut record, 702, &self.network_info.mqtt_client_id);
-        Self::write_string(&mut record, 766, &self.network_info.mqtt_topic_prefix);
-
-        record
     }
 
     fn write_u16(record: &mut [u8; RECORD_SIZE], offset: usize, value: u16) {
@@ -152,11 +180,12 @@ impl FlashConfigAdapter {
     }
 
     fn default_network_info() -> NetworkInfo {
+        let mqtt_port = option_env!("ESPERRA_MQTT_PORT").unwrap_or("8883").parse().unwrap();
+
         let ntp_server = String::try_from(option_env!("ESPERRA_NTP_SERVER").unwrap_or("pool.ntp.org")).unwrap();
         let wifi_ssid = String::try_from(option_env!("ESPERRA_WIFI_SSID").unwrap_or("")).unwrap();
         let wifi_password = String::try_from(option_env!("ESPERRA_WIFI_PASSWORD").unwrap_or("")).unwrap();
         let mqtt_hostname = String::try_from(option_env!("ESPERRA_MQTT_HOSTNAME").unwrap_or("mqtt.rohenkohl.dev")).unwrap();
-        let mqtt_port = option_env!("ESPERRA_MQTT_PORT").unwrap_or("8883").parse().unwrap();
         let mqtt_username = String::try_from(option_env!("ESPERRA_MQTT_USERNAME").unwrap_or("")).unwrap();
         let mqtt_password = String::try_from(option_env!("ESPERRA_MQTT_PASSWORD").unwrap_or("")).unwrap();
         let mqtt_client_id = String::try_from(option_env!("ESPERRA_MQTT_CLIENT_ID").unwrap_or("esperra")).unwrap();
@@ -167,19 +196,67 @@ impl FlashConfigAdapter {
 }
 
 impl ConfigPort for FlashConfigAdapter {
-    fn read_heater_options(&self) -> &HeaterOptions {
-        &self.heater_options
+    fn read_heater_options(&self) -> HeaterOptions {
+        critical_section::with(|cs| self.state.borrow_ref(cs).heater_options)
     }
 
-    fn read_pid_gains(&self) -> &PidGains {
-        &self.pid_gains
+    fn read_pid_gains(&self) -> PidGains {
+        critical_section::with(|cs| self.state.borrow_ref(cs).pid_gains)
     }
 
-    fn read_firmware_info(&self) -> &FirmwareInfo {
-        &self.firmware_info
+    fn read_firmware_info(&self) -> FirmwareInfo {
+        critical_section::with(|cs| self.state.borrow_ref(cs).firmware_info.clone())
     }
 
-    fn read_network_info(&self) -> &NetworkInfo {
-        &self.network_info
+    fn read_network_info(&self) -> NetworkInfo {
+        critical_section::with(|cs| self.state.borrow_ref(cs).network_info.clone())
+    }
+
+    async fn write_heater_options(&self, options: HeaterOptions) {
+        let record = critical_section::with(|cs| {
+            let mut state = self.state.borrow_ref_mut(cs);
+
+            state.heater_options = options;
+
+            state.record()
+        });
+
+        self.persist(record).await;
+    }
+
+    async fn write_pid_gains(&self, gains: PidGains) {
+        let record = critical_section::with(|cs| {
+            let mut state = self.state.borrow_ref_mut(cs);
+
+            state.pid_gains = gains;
+
+            state.record()
+        });
+
+        self.persist(record).await;
+    }
+
+    async fn write_firmware_info(&self, info: FirmwareInfo) {
+        let record = critical_section::with(|cs| {
+            let mut state = self.state.borrow_ref_mut(cs);
+
+            state.firmware_info = info;
+
+            state.record()
+        });
+
+        self.persist(record).await;
+    }
+
+    async fn write_network_info(&self, info: NetworkInfo) {
+        let record = critical_section::with(|cs| {
+            let mut state = self.state.borrow_ref_mut(cs);
+
+            state.network_info = info;
+
+            state.record()
+        });
+
+        self.persist(record).await;
     }
 }

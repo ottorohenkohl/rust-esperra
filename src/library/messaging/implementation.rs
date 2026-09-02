@@ -1,10 +1,11 @@
-use super::protocol::{MessagingError, MessagingEvent};
-
+use crate::adapter::logging::{self, LoggedMessage};
+use super::protocol::MessagingError;
 use super::task::messaging_task;
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::config::port::NetworkInfo;
+use crate::domain::config::protocol::ConfigMessage;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::model::ActorRef;
 use crate::library::network::implementation::NetworkStackImpl;
@@ -13,6 +14,7 @@ use crate::library::network::implementation::ROOT_CA;
 
 use core::ffi::CStr;
 use embassy_executor::Spawner;
+use embassy_futures::select::Either;
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::{Duration, Timer};
@@ -25,10 +27,12 @@ use rust_mqtt::client::options::{ConnectOptions, PublicationOptions, Subscriptio
 use rust_mqtt::client::Client;
 use rust_mqtt::types::{MqttBinary, MqttString, TopicFilter, TopicName};
 
+use embassy_futures::select::select;
+
 use mbedtls_rs::X509;
 
 const SOCKET_BUFFER_SIZE: usize = 4096;
-const JSON_BUFFER_SIZE: usize = 256;
+
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 const TOPIC_CAPACITY: usize = 96;
 
@@ -45,11 +49,12 @@ pub struct MqttMessagingImpl {
     boiler: ActorRef<BoilerMessage>,
     brew: ActorRef<BrewMessage>,
     update: ActorRef<UpdateMessage>,
+    config: ActorRef<ConfigMessage>,
 }
 
 impl MqttMessagingImpl {
-    pub fn new(network: &'static NetworkStackImpl, info: &NetworkInfo, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, spawner: Spawner) {
-        let implementation = Self { network, hostname: info.mqtt_hostname.clone(), port: info.mqtt_port, client_id: info.mqtt_client_id.clone(), username: info.mqtt_username.clone(), password: info.mqtt_password.clone(), topic_prefix: info.mqtt_topic_prefix.clone(), boiler, brew, update };
+    pub fn new(network: &'static NetworkStackImpl, info: &NetworkInfo, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, config: ActorRef<ConfigMessage>, spawner: Spawner) {
+        let implementation = Self { network, hostname: info.mqtt_hostname.clone(), port: info.mqtt_port, client_id: info.mqtt_client_id.clone(), username: info.mqtt_username.clone(), password: info.mqtt_password.clone(), topic_prefix: info.mqtt_topic_prefix.clone(), boiler, brew, update, config };
 
         spawner.spawn(messaging_task(implementation).unwrap());
     }
@@ -121,20 +126,38 @@ impl MqttMessagingImpl {
         self.subscribe(&mut client, "/in/boiler").await?;
         self.subscribe(&mut client, "/in/brew").await?;
         self.subscribe(&mut client, "/in/update").await?;
+        self.subscribe(&mut client, "/in/config").await?;
 
-        self.publish_event(&mut client, "/out/system", MessagingEvent::Connected).await?;
 
         loop {
-            match client.poll().await.map_err(|_| MessagingError::Mqtt)? {
-                Event::Publish(publish) => {
-                    let topic = publish.topic.as_ref().as_ref();
-                    let payload = publish.message.as_ref();
+            match select(logging::receive_log(), client.poll()).await {
+                Either::First(message) => self.publish_log(&mut client, message).await?,
+                Either::Second(event) => {
+                    if let Event::Publish(publish) = event.map_err(|_| MessagingError::Mqtt)? {
+                        let topic = publish.topic.as_ref().as_ref();
+                        let payload = publish.message.as_ref();
 
-                    self.handle_command(&mut client, topic, payload).await?;
+                        self.handle_command(topic, payload)?;
+                    }
                 }
-                _ => {}
             }
         }
+    }
+
+    async fn publish_log(&self, client: &mut MqttClient<'_>, message: LoggedMessage) -> Result<(), MessagingError> {
+        let mut suffix: String<TOPIC_CAPACITY> = String::new();
+
+        suffix.push_str("/out/").map_err(|_| MessagingError::Config)?;
+        suffix.push_str(message.public_name.as_str()).map_err(|_| MessagingError::Config)?;
+
+        let topic = self.topic(suffix.as_str())?;
+
+        let topic = TopicName::new(MqttString::from_str(topic.as_str()).map_err(|_| MessagingError::Config)?).ok_or(MessagingError::Config)?;
+        let options = PublicationOptions::new(TopicReference::Name(topic)).payload_format_indicator(true);
+
+        client.publish(&options, Bytes::from(message.payload.as_slice())).await.map_err(|_| MessagingError::Mqtt)?;
+
+        Ok(())
     }
 
     async fn subscribe(&self, client: &mut MqttClient<'_>, suffix: &str) -> Result<(), MessagingError> {
@@ -145,44 +168,29 @@ impl MqttMessagingImpl {
         Ok(())
     }
 
-    async fn handle_command(&self, client: &mut MqttClient<'_>, topic: &str, payload: &[u8]) -> Result<(), MessagingError> {
+    fn handle_command(&self, topic: &str, payload: &[u8]) -> Result<(), MessagingError> {
         let boiler_topic = self.topic("/in/boiler").map_err(|_| MessagingError::Config)?;
         let brew_topic = self.topic("/in/brew").map_err(|_| MessagingError::Config)?;
         let update_topic = self.topic("/in/update").map_err(|_| MessagingError::Config)?;
+        let config_topic = self.topic("/in/config").map_err(|_| MessagingError::Config)?;
 
         if topic == boiler_topic.as_str() {
-            return self.dispatch(client, "/out/boiler", serde_json_core::from_slice::<BoilerMessage>(payload).map(|(command, _)| self.boiler.tell(None, command))).await;
+            if let Ok((command, _)) = serde_json_core::from_slice::<BoilerMessage>(payload) {
+                self.boiler.tell(None, command);
+            }
+        } else if topic == brew_topic.as_str() {
+            if let Ok((command, _)) = serde_json_core::from_slice::<BrewMessage>(payload) {
+                self.brew.tell(None, command);
+            }
+        } else if topic == update_topic.as_str() {
+            if let Ok((command, _)) = serde_json_core::from_slice::<UpdateMessage>(payload) {
+                self.update.tell(None, command);
+            }
+        } else if topic == config_topic.as_str() {
+            if let Ok((command, _)) = serde_json_core::from_slice::<ConfigMessage>(payload) {
+                self.config.tell(None, command);
+            }
         }
-
-        if topic == brew_topic.as_str() {
-            return self.dispatch(client, "/out/brew", serde_json_core::from_slice::<BrewMessage>(payload).map(|(command, _)| self.brew.tell(None, command))).await;
-        }
-
-        if topic == update_topic.as_str() {
-            return self.dispatch(client, "/out/update", serde_json_core::from_slice::<UpdateMessage>(payload).map(|(command, _)| self.update.tell(None, command))).await;
-        }
-
-        Ok(())
-    }
-
-    async fn dispatch<E>(&self, client: &mut MqttClient<'_>, topic: &str, result: Result<(), E>) -> Result<(), MessagingError> {
-        let event = if result.is_ok() { MessagingEvent::CommandAccepted } else { MessagingEvent::BadFormat };
-
-        self.publish_event(client, topic, event).await
-    }
-
-    async fn publish_event(&self, client: &mut MqttClient<'_>, suffix: &str, event: MessagingEvent) -> Result<(), MessagingError> {
-        let topic = self.topic(suffix).map_err(|_| MessagingError::Config)?;
-
-        let topic = TopicName::new(MqttString::from_str(topic.as_str()).map_err(|_| MessagingError::Config)?).ok_or(MessagingError::Config)?;
-
-        let mut payload = [0; JSON_BUFFER_SIZE];
-
-        let payload_length = serde_json_core::to_slice(&event, &mut payload).map_err(|_| MessagingError::Mqtt)?;
-
-        let options = PublicationOptions::new(TopicReference::Name(topic)).payload_format_indicator(true);
-
-        client.publish(&options, Bytes::from(&payload[..payload_length])).await.map_err(|_| MessagingError::Mqtt)?;
 
         Ok(())
     }

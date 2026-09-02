@@ -77,7 +77,7 @@ impl<U: UpdatePort> UpdateActor<U> {
 
             Timer::after(SAFE_SHUTDOWN_DELAY).await;
 
-            match self.update_port.confirm() {
+            match self.update_port.confirm().await {
                 Ok(UpdateConfirmation::Confirmed) => {}
                 Ok(UpdateConfirmation::NotPending) => {
                     let actor_ref = self.actor_ref.clone();

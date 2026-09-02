@@ -6,6 +6,8 @@ use crate::library::network::implementation::ROOT_CA;
 
 use alloc::sync::Arc;
 use core::ffi::CStr;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use core::fmt::Write;
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
@@ -27,17 +29,17 @@ use esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN;
 use reqwless::X509;
 
 const UPDATE_HEADERS: [(&str, &str); 1] = [("Connection", "close")];
-
 const IMAGE_HEADER_SIZE: usize = 80;
 const FIRMWARE_BUFFER_SIZE: usize = 4096;
 
 static TCP_STATE: StaticCell<TcpClientState<1, 4096, 4096>> = StaticCell::new();
 
 type FirmwareHttpClient<'a> = HttpClient<'a, TcpClient<'static, 1, 4096, 4096>, DnsSocket<'static>>;
+type SharedFlash = Arc<Mutex<CriticalSectionRawMutex, FlashStorage<'static>>>;
 
 pub struct EspUpdateAdapter<C> {
     network: &'static NetworkStackImpl,
-    flash: FlashStorage<'static>,
+    flash: SharedFlash,
     config: Arc<C>,
 }
 
@@ -48,7 +50,7 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
         Ok(())
     }
 
-    pub fn new(network: &'static NetworkStackImpl, flash: FlashStorage<'static>, config: Arc<C>) -> Self {
+    pub fn new(network: &'static NetworkStackImpl, flash: SharedFlash, config: Arc<C>) -> Self {
         Self { network, flash, config }
     }
 
@@ -63,11 +65,13 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
 
         let firmware_info = self.config.read_firmware_info();
 
-        let firmware_url = Self::latest_firmware_url(firmware_info)?;
+        let firmware_url = Self::latest_firmware_url(&firmware_info)?;
         let latest_version = Self::fetch_latest_version(&mut client, firmware_url.as_str()).await?;
 
         if Self::is_newer_version(latest_version.as_str(), firmware_info.version.as_str()) {
-            Self::install_firmware(&mut client, &mut self.flash, firmware_url.as_str()).await?;
+            let mut flash = self.flash.lock().await;
+
+            Self::install_firmware(&mut client, &mut flash, firmware_url.as_str()).await?;
 
             return Ok(true)
 
@@ -188,7 +192,7 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
 }
 
 impl<C> UpdatePort for EspUpdateAdapter<C> where C: ConfigPort {
-    async fn update(&mut self) -> Result<(), UpdateError> {
+    async fn update(&mut self) -> Result<UpdateConfirmation, UpdateError> {
         self.network.stack.wait_config_up().await;
         self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str()).await.map_err(|_| UpdateError::Time)?;
 
@@ -196,12 +200,15 @@ impl<C> UpdatePort for EspUpdateAdapter<C> where C: ConfigPort {
             software_reset();
         }
 
-        Ok(())
+        Ok(UpdateConfirmation::Confirmed)
     }
 
-    fn confirm(&mut self) -> Result<UpdateConfirmation, UpdateError> {
+    async fn confirm(&mut self) -> Result<UpdateConfirmation, UpdateError> {
+        let mut flash = self.flash.lock().await;
+
         let mut table = [0; PARTITION_TABLE_MAX_LEN];
-        let mut updater = OtaUpdater::new(&mut self.flash, &mut table).map_err(|_| UpdateError::Flash)?;
+
+        let mut updater = OtaUpdater::new(&mut *flash, &mut table).map_err(|_| UpdateError::Flash)?;
 
         if matches!(updater.current_ota_state(), Ok(OtaImageState::New | OtaImageState::PendingVerify)) {
             updater.set_current_ota_state(OtaImageState::Valid).map_err(|_| UpdateError::Flash)?;

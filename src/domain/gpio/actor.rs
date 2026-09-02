@@ -2,9 +2,11 @@ use super::port::{OutputPort, TemperatureSensorPort};
 use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
 
 use crate::domain::clock::port::TimerPort;
+use crate::domain::logging::port::LoggingPort;
 use crate::library::actor::interface::Actor;
 use crate::library::actor::model::Subscriber;
 
+use alloc::sync::Arc;
 use heapless::Vec;
 
 pub struct LightActor<P, T> {
@@ -38,26 +40,37 @@ impl<P, T> Actor for LightActor<P, T> where P: OutputPort, T: TimerPort {
     }
 }
 
-pub struct TemperatureSensorActor<P> {
+pub struct TemperatureSensorActor<P, L> {
     temperature_port: P,
+    logging_port: Arc<L>,
     subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>,
 }
 
-impl<P> TemperatureSensorActor<P> {
-    pub fn new(temperature_port: P, subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>) -> Self {
-        Self { temperature_port, subscribers }
+impl<P, L> TemperatureSensorActor<P, L> {
+    pub fn new(temperature_port: P, logging_port: Arc<L>, subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>) -> Self {
+        Self { temperature_port, logging_port, subscribers }
     }
 }
 
-impl<P> Actor for TemperatureSensorActor<P> where P: TemperatureSensorPort {
+impl<P, L> Actor for TemperatureSensorActor<P, L>
+where
+    P: TemperatureSensorPort,
+    L: LoggingPort,
+{
     type Message = TemperatureSensorMessage;
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
             TemperatureSensorMessage::MeasureTemperature => {
                 let message = match self.temperature_port.read_temperature().await {
-                    Ok(temperature) => TemperatureSensorResponse::Measured(temperature),
-                    Err(error) => TemperatureSensorResponse::MeasurementFailed(error),
+                    Ok(temperature) => {
+                        self.logging_port.log("temperature", &temperature);
+
+                        TemperatureSensorResponse::Measured(temperature)
+                    },
+                    Err(error) => {
+                        TemperatureSensorResponse::MeasurementFailed(error)
+                    }
                 };
 
                 self.subscribers.iter().for_each(|i| { i.tell(message) });
