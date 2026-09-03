@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+use serde::Serialize;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum TemperatureSensorError {
     DiscoveryFailed,
     NotFound,

@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 use super::port::TemperatureSensorError;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -11,7 +13,7 @@ pub enum TemperatureSensorMessage {
     MeasureTemperature,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub enum TemperatureSensorResponse {
     Measured(f64),
     MeasurementFailed(TemperatureSensorError),

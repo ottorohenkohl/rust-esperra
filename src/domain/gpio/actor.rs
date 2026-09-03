@@ -64,9 +64,11 @@ where
             TemperatureSensorMessage::MeasureTemperature => {
                 let message = match self.temperature_port.read_temperature().await {
                     Ok(temperature) => {
-                        self.logging_port.log("temperature", &temperature);
+                        let message = TemperatureSensorResponse::Measured(temperature);
 
-                        TemperatureSensorResponse::Measured(temperature)
+                        self.logging_port.log("temperature", &message);
+
+                        message
                     },
                     Err(error) => {
                         TemperatureSensorResponse::MeasurementFailed(error)
