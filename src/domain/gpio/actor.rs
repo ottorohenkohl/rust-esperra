@@ -52,11 +52,7 @@ impl<P, L> TemperatureSensorActor<P, L> {
     }
 }
 
-impl<P, L> Actor for TemperatureSensorActor<P, L>
-where
-    P: TemperatureSensorPort,
-    L: LoggingPort,
-{
+impl<P, L> Actor for TemperatureSensorActor<P, L> where P: TemperatureSensorPort, L: LoggingPort {
     type Message = TemperatureSensorMessage;
 
     async fn handle(&mut self, message: Self::Message) {

@@ -6,6 +6,7 @@ use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::config::port::NetworkInfo;
 use crate::domain::config::protocol::ConfigMessage;
+use crate::domain::energy::protocol::EnergyMessage;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::model::ActorRef;
 use crate::library::network::implementation::NetworkStackImpl;
@@ -26,6 +27,8 @@ use rust_mqtt::client::event::Event;
 use rust_mqtt::client::options::{ConnectOptions, PublicationOptions, SubscriptionOptions, TopicReference};
 use rust_mqtt::client::Client;
 use rust_mqtt::types::{MqttBinary, MqttString, TopicFilter, TopicName};
+use serde::Deserialize;
+use serde_json_core::from_slice;
 
 use embassy_futures::select::select;
 
@@ -50,11 +53,12 @@ pub struct MqttMessagingImpl {
     brew: ActorRef<BrewMessage>,
     update: ActorRef<UpdateMessage>,
     config: ActorRef<ConfigMessage>,
+    energy: ActorRef<EnergyMessage>,
 }
 
 impl MqttMessagingImpl {
-    pub fn new(network: &'static NetworkStackImpl, info: &NetworkInfo, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, config: ActorRef<ConfigMessage>, spawner: Spawner) {
-        let implementation = Self { network, hostname: info.mqtt_hostname.clone(), port: info.mqtt_port, client_id: info.mqtt_client_id.clone(), username: info.mqtt_username.clone(), password: info.mqtt_password.clone(), topic_prefix: info.mqtt_topic_prefix.clone(), boiler, brew, update, config };
+    pub fn new(network: &'static NetworkStackImpl, info: &NetworkInfo, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, config: ActorRef<ConfigMessage>, energy: ActorRef<EnergyMessage>, spawner: Spawner) {
+        let implementation = Self { network, hostname: info.mqtt_hostname.clone(), port: info.mqtt_port, client_id: info.mqtt_client_id.clone(), username: info.mqtt_username.clone(), password: info.mqtt_password.clone(), topic_prefix: info.mqtt_topic_prefix.clone(), boiler, brew, update, config, energy };
 
         spawner.spawn(messaging_task(implementation).unwrap());
     }
@@ -127,6 +131,7 @@ impl MqttMessagingImpl {
         self.subscribe(&mut client, "/in/brew").await?;
         self.subscribe(&mut client, "/in/update").await?;
         self.subscribe(&mut client, "/in/config").await?;
+        self.subscribe(&mut client, "/in/energy").await?;
 
 
         loop {
@@ -148,6 +153,7 @@ impl MqttMessagingImpl {
         let mut suffix: String<TOPIC_CAPACITY> = String::new();
 
         suffix.push_str("/out/").map_err(|_| MessagingError::Config)?;
+
         suffix.push_str(message.public_name.as_str()).map_err(|_| MessagingError::Config)?;
 
         let topic = self.topic(suffix.as_str())?;
@@ -168,28 +174,27 @@ impl MqttMessagingImpl {
         Ok(())
     }
 
+    fn dispatch<Message>(&self, payload: &[u8], actor: &ActorRef<Message>) where Message: for<'a> Deserialize<'a> + 'static {
+        if let Ok((command, _)) = from_slice(payload) {
+            actor.tell(None, command);
+        }
+    }
+
     fn handle_command(&self, topic: &str, payload: &[u8]) -> Result<(), MessagingError> {
         let boiler_topic = self.topic("/in/boiler").map_err(|_| MessagingError::Config)?;
         let brew_topic = self.topic("/in/brew").map_err(|_| MessagingError::Config)?;
         let update_topic = self.topic("/in/update").map_err(|_| MessagingError::Config)?;
         let config_topic = self.topic("/in/config").map_err(|_| MessagingError::Config)?;
+        let energy_topic = self.topic("/in/energy").map_err(|_| MessagingError::Config)?;
 
-        if topic == boiler_topic.as_str() {
-            if let Ok((command, _)) = serde_json_core::from_slice::<BoilerMessage>(payload) {
-                self.boiler.tell(None, command);
-            }
-        } else if topic == brew_topic.as_str() {
-            if let Ok((command, _)) = serde_json_core::from_slice::<BrewMessage>(payload) {
-                self.brew.tell(None, command);
-            }
-        } else if topic == update_topic.as_str() {
-            if let Ok((command, _)) = serde_json_core::from_slice::<UpdateMessage>(payload) {
-                self.update.tell(None, command);
-            }
-        } else if topic == config_topic.as_str() {
-            if let Ok((command, _)) = serde_json_core::from_slice::<ConfigMessage>(payload) {
-                self.config.tell(None, command);
-            }
+        match topic {
+            topic if topic == boiler_topic.as_str() => self.dispatch(payload, &self.boiler),
+            topic if topic == brew_topic.as_str() => self.dispatch(payload, &self.brew),
+            topic if topic == update_topic.as_str() => self.dispatch(payload, &self.update),
+            topic if topic == config_topic.as_str() => self.dispatch(payload, &self.config),
+            topic if topic == energy_topic.as_str() => self.dispatch(payload, &self.energy),
+
+            _ => {}
         }
 
         Ok(())

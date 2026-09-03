@@ -2,6 +2,7 @@ use super::protocol::{ButtonMessage, WaterMessage};
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
+use crate::domain::energy::protocol::EnergyMessage;
 use crate::domain::gpio::port::InputPort;
 use crate::domain::gpio::protocol::LightMessage;
 use crate::domain::update::protocol::UpdateMessage;
@@ -15,23 +16,21 @@ const MAINTENANCE_GESTURE_MAX: Duration = Duration::from_secs(12);
 
 pub struct ButtonActor<P, S> {
     actor_ref: ActorRef<ButtonMessage>,
-    boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
     power_input_port: P,
     status_input_port: S,
-    status_light_actor: ActorRef<LightMessage>,
-    power_light_actor: ActorRef<LightMessage>,
     update_actor: ActorRef<UpdateMessage>,
+    energy_actor: ActorRef<EnergyMessage>,
     machine_powered: Option<bool>,
     power_off_since: Option<Instant>,
 }
 
 impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
-    pub fn new(actor_ref: ActorRef<ButtonMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_input_port: P, status_input_port: S, status_light_actor: ActorRef<LightMessage>, power_light_actor: ActorRef<LightMessage>, update_actor: ActorRef<UpdateMessage>) -> Self {
+    pub fn new(actor_ref: ActorRef<ButtonMessage>, brew_actor: ActorRef<BrewMessage>, power_input_port: P, status_input_port: S, update_actor: ActorRef<UpdateMessage>, energy_actor: ActorRef<EnergyMessage>) -> Self {
         let machine_powered = None;
         let power_off_since = None;
 
-        Self { actor_ref, boiler_actor, brew_actor, power_input_port, status_input_port, status_light_actor, power_light_actor, update_actor, machine_powered, power_off_since }
+        Self { actor_ref, brew_actor, power_input_port, status_input_port, update_actor, energy_actor, machine_powered, power_off_since }
     }
 
     fn reached_update_interval(&mut self) -> bool {
@@ -48,34 +47,27 @@ impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
             (Some(true), false) | (None, false) => {
                 self.power_off_since = Some(Instant::now());
 
-                self.boiler_actor.lock(&self.actor_ref);
-                self.brew_actor.lock(&self.actor_ref);
-                self.power_light_actor.lock(&self.actor_ref);
-                self.status_light_actor.lock(&self.actor_ref);
-
-                self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
-                self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
-                self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(false));
-                self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(false));
+                self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(false));
             }
             (Some(false), true) | (None, true) => {
                 if self.reached_update_interval() {
                     return self.update_actor.tell(Some(&self.actor_ref), UpdateMessage::Start);
                 }
 
-                self.boiler_actor.unlock(&self.actor_ref);
-                self.brew_actor.unlock(&self.actor_ref);
-                self.power_light_actor.unlock(&self.actor_ref);
-                self.status_light_actor.unlock(&self.actor_ref);
-
-                self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
+                self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(true));
             }
             _ => {}
         }
     }
 
     fn handle_status_input(&self) {
-        self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(self.status_input_port.powered_state()));
+        let active = self.status_input_port.powered_state();
+
+        if active {
+            self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(true));
+        }
+
+        self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(active));
     }
 }
 
