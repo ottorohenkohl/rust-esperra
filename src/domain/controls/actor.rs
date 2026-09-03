@@ -1,14 +1,16 @@
-use super::protocol::{ButtonMessage, WaterMessage};
+use super::protocol::{ButtonMessage, WaterMessage, WaterResponse};
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::energy::protocol::EnergyMessage;
 use crate::domain::gpio::port::InputPort;
 use crate::domain::gpio::protocol::LightMessage;
+use crate::domain::logging::port::LoggingPort;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
 
+use alloc::sync::Arc;
 use embassy_time::{Duration, Instant};
 
 const MAINTENANCE_GESTURE_MIN: Duration = Duration::from_secs(8);
@@ -71,8 +73,7 @@ impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
     }
 }
 
-impl<P, S> Actor for ButtonActor<P, S>
-where P: InputPort, S: InputPort {
+impl<P, S> Actor for ButtonActor<P, S> where P: InputPort, S: InputPort {
     type Message = ButtonMessage;
 
     async fn handle(&mut self, message: Self::Message) {
@@ -85,21 +86,26 @@ where P: InputPort, S: InputPort {
     }
 }
 
-pub struct WaterActor<W> {
+pub struct WaterActor<W, L> {
     actor_ref: ActorRef<WaterMessage>,
     boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
     power_light_actor: ActorRef<LightMessage>,
     water_input_port: W,
+    logging_port: Arc<L>,
 }
 
-impl<W> WaterActor<W> where W: InputPort {
-    pub fn new(actor_ref: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, water_input_port: W) -> Self {
-        Self { actor_ref, boiler_actor, brew_actor, power_light_actor, water_input_port }
+impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
+    pub fn new(actor_ref: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, water_input_port: W, logging_port: Arc<L>) -> Self {
+        Self { actor_ref, boiler_actor, brew_actor, power_light_actor, water_input_port, logging_port }
     }
 
     fn handle_water_input(&self) {
-        if self.water_input_port.powered_state() {
+        let enough_water = self.water_input_port.powered_state();
+
+        self.logging_port.log("water", &WaterResponse::EnoughWater(enough_water));
+
+        if enough_water {
             self.boiler_actor.unlock(&self.actor_ref);
             self.brew_actor.unlock(&self.actor_ref);
 
@@ -117,7 +123,7 @@ impl<W> WaterActor<W> where W: InputPort {
     }
 }
 
-impl<W> Actor for WaterActor<W> where W: InputPort {
+impl<W, L> Actor for WaterActor<W, L> where W: InputPort, L: LoggingPort {
     type Message = WaterMessage;
 
     async fn handle(&mut self, message: Self::Message) {

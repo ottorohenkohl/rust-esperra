@@ -2,10 +2,12 @@ use crate::domain::config::port::{ConfigError, ConfigPort, FirmwareInfo, HeaterO
 
 use alloc::sync::Arc;
 use core::cell::RefCell;
+use core::fmt::Write;
 use core::str::from_utf8;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embedded_storage::{ReadStorage, Storage};
+use esp_hal::rng::Rng;
 use esp_storage::FlashStorage;
 use heapless::String;
 
@@ -182,22 +184,26 @@ impl FlashConfigAdapter {
     }
 
     fn default_firmware_info() -> FirmwareInfo {
-        let url = String::try_from(option_env!("ESPERRA_FIRMWARE_URL").unwrap_or("")).unwrap();
+        let url = String::try_from(option_env!("ESPERRA_FIRMWARE_URL").unwrap_or("https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware/latest/firmware-ota.bin")).unwrap();
         let version = String::try_from(env!("CARGO_PKG_VERSION")).unwrap();
 
         FirmwareInfo { url, version }
     }
 
     fn default_network_info() -> NetworkInfo {
+        let mut random_client_id = String::new();
+
+        write!(&mut random_client_id, "esperra-{:08x}", Rng::new().random()).unwrap();
+
+        let mqtt_client_id = option_env!("ESPERRA_MQTT_CLIENT_ID").map(|value| String::try_from(value).unwrap()).unwrap_or(random_client_id);
         let mqtt_port = option_env!("ESPERRA_MQTT_PORT").unwrap_or("8883").parse().unwrap();
 
         let ntp_server = String::try_from(option_env!("ESPERRA_NTP_SERVER").unwrap_or("pool.ntp.org")).unwrap();
         let wifi_ssid = String::try_from(option_env!("ESPERRA_WIFI_SSID").unwrap_or("")).unwrap();
         let wifi_password = String::try_from(option_env!("ESPERRA_WIFI_PASSWORD").unwrap_or("")).unwrap();
         let mqtt_hostname = String::try_from(option_env!("ESPERRA_MQTT_HOSTNAME").unwrap_or("mqtt.rohenkohl.dev")).unwrap();
-        let mqtt_username = String::try_from(option_env!("ESPERRA_MQTT_USERNAME").unwrap_or("")).unwrap();
+        let mqtt_username = String::try_from(option_env!("ESPERRA_MQTT_USERNAME").unwrap_or("esperra")).unwrap();
         let mqtt_password = String::try_from(option_env!("ESPERRA_MQTT_PASSWORD").unwrap_or("")).unwrap();
-        let mqtt_client_id = String::try_from(option_env!("ESPERRA_MQTT_CLIENT_ID").unwrap_or("esperra")).unwrap();
         let mqtt_topic_prefix = String::try_from(option_env!("ESPERRA_MQTT_TOPIC_PREFIX").unwrap_or("esperra")).unwrap();
 
         NetworkInfo { ntp_server, wifi_ssid, wifi_password, mqtt_hostname, mqtt_port, mqtt_username, mqtt_password, mqtt_client_id, mqtt_topic_prefix }

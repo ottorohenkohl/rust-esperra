@@ -1,4 +1,5 @@
 use heapless::String;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigError {
@@ -20,32 +21,32 @@ pub trait ConfigPort {
     async fn write_network_info(&self, info: NetworkInfo);
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct HeaterOptions {
     pub heating_cycle_ms: u64,
     pub target_temperature_interval: f64,
     pub boost_intervall_size: f64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TemperatureOptions {
     pub target_temperature: f64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct PidGains {
     pub k_proportional: f64,
     pub k_intergral: f64,
     pub k_derivative: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct FirmwareInfo {
     pub url: String<256>,
     pub version: String<32>,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct NetworkInfo {
     pub ntp_server: String<64>,
     pub wifi_ssid: String<32>,

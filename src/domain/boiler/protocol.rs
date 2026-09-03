@@ -1,6 +1,8 @@
 use crate::domain::gpio::protocol::TemperatureSensorResponse;
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum BoilerMessage {
     SetActive(bool),
     SwitchHeater,

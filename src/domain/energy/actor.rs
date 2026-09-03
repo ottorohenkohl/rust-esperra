@@ -37,7 +37,6 @@ impl EnergyActor {
         self.last_activity = Instant::now();
 
         if active {
-
             self.boiler_actor.unlock(&self.actor_ref);
             self.brew_actor.unlock(&self.actor_ref);
             self.power_light_actor.unlock(&self.actor_ref);
