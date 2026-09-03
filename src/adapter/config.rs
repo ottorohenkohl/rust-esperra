@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ConfigError, ConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains};
+use crate::domain::config::port::{ConfigError, ConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, TemperatureOptions};
 
 use alloc::sync::Arc;
 use core::cell::RefCell;
@@ -20,6 +20,7 @@ pub type SharedFlash = Arc<Mutex<CriticalSectionRawMutex, FlashStorage<'static>>
 struct ConfigState {
     firmware_info: FirmwareInfo,
     heater_options: HeaterOptions,
+    temperature_options: TemperatureOptions,
     network_info: NetworkInfo,
     pid_gains: PidGains,
 }
@@ -30,9 +31,9 @@ impl ConfigState {
 
         FlashConfigAdapter::write_u16(&mut record, 0, MAGIC_RECORD);
         FlashConfigAdapter::write_u64(&mut record, 4, self.heater_options.heating_cycle_ms);
-        FlashConfigAdapter::write_f64(&mut record, 12, self.heater_options.target_temperature);
-        FlashConfigAdapter::write_f64(&mut record, 20, self.heater_options.target_temperature_interval);
-        FlashConfigAdapter::write_f64(&mut record, 28, self.heater_options.boost_intervall_size);
+        FlashConfigAdapter::write_f64(&mut record, 12, self.heater_options.target_temperature_interval);
+        FlashConfigAdapter::write_f64(&mut record, 20, self.heater_options.boost_intervall_size);
+        FlashConfigAdapter::write_f64(&mut record, 28, self.temperature_options.target_temperature);
         FlashConfigAdapter::write_f64(&mut record, 36, self.pid_gains.k_proportional);
         FlashConfigAdapter::write_f64(&mut record, 44, self.pid_gains.k_intergral);
         FlashConfigAdapter::write_f64(&mut record, 52, self.pid_gains.k_derivative);
@@ -73,9 +74,11 @@ impl FlashConfigAdapter {
                 },
                 heater_options: HeaterOptions {
                     heating_cycle_ms: Self::read_u64(&record, 4),
-                    target_temperature: Self::read_f64(&record, 12),
-                    target_temperature_interval: Self::read_f64(&record, 20),
-                    boost_intervall_size: Self::read_f64(&record, 28),
+                    target_temperature_interval: Self::read_f64(&record, 12),
+                    boost_intervall_size: Self::read_f64(&record, 20),
+                },
+                temperature_options: TemperatureOptions {
+                    target_temperature: Self::read_f64(&record, 28),
                 },
                 network_info: NetworkInfo {
                     ntp_server: Self::read_string(&record, 348, 64),
@@ -98,6 +101,7 @@ impl FlashConfigAdapter {
             let state = ConfigState {
                 firmware_info: Self::default_firmware_info(),
                 heater_options: Self::default_heater_options(),
+                temperature_options: Self::default_temperature_options(),
                 network_info: Self::default_network_info(),
                 pid_gains: Self::default_pid_gains(),
             };
@@ -157,11 +161,16 @@ impl FlashConfigAdapter {
 
     fn default_heater_options() -> HeaterOptions {
         let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("1000").parse().unwrap();
-        let target_temperature = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE").unwrap_or("94.0").parse().unwrap();
         let target_temperature_interval = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL").unwrap_or("0.5").parse().unwrap();
         let boost_intervall_size = option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("5.0").parse().unwrap();
 
-        HeaterOptions { heating_cycle_ms, target_temperature, target_temperature_interval, boost_intervall_size }
+        HeaterOptions { heating_cycle_ms, target_temperature_interval, boost_intervall_size }
+    }
+
+    fn default_temperature_options() -> TemperatureOptions {
+        let target_temperature = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE").unwrap_or("94.0").parse().unwrap();
+
+        TemperatureOptions { target_temperature }
     }
 
     fn default_pid_gains() -> PidGains {
@@ -200,6 +209,10 @@ impl ConfigPort for FlashConfigAdapter {
         critical_section::with(|cs| self.state.borrow_ref(cs).heater_options)
     }
 
+    fn read_temperature_options(&self) -> TemperatureOptions {
+        critical_section::with(|cs| self.state.borrow_ref(cs).temperature_options)
+    }
+
     fn read_pid_gains(&self) -> PidGains {
         critical_section::with(|cs| self.state.borrow_ref(cs).pid_gains)
     }
@@ -217,6 +230,18 @@ impl ConfigPort for FlashConfigAdapter {
             let mut state = self.state.borrow_ref_mut(cs);
 
             state.heater_options = options;
+
+            state.record()
+        });
+
+        self.persist(record).await;
+    }
+
+    async fn write_temperature_options(&self, options: TemperatureOptions) {
+        let record = critical_section::with(|cs| {
+            let mut state = self.state.borrow_ref_mut(cs);
+
+            state.temperature_options = options;
 
             state.record()
         });

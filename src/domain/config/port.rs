@@ -8,11 +8,13 @@ pub enum ConfigError {
 
 pub trait ConfigPort {
     fn read_heater_options(&self) -> HeaterOptions;
+    fn read_temperature_options(&self) -> TemperatureOptions;
     fn read_pid_gains(&self) -> PidGains;
     fn read_firmware_info(&self) -> FirmwareInfo;
     fn read_network_info(&self) -> NetworkInfo;
 
     async fn write_heater_options(&self, options: HeaterOptions);
+    async fn write_temperature_options(&self, options: TemperatureOptions);
     async fn write_pid_gains(&self, gains: PidGains);
     async fn write_firmware_info(&self, info: FirmwareInfo);
     async fn write_network_info(&self, info: NetworkInfo);
@@ -21,9 +23,13 @@ pub trait ConfigPort {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct HeaterOptions {
     pub heating_cycle_ms: u64,
-    pub target_temperature: f64,
     pub target_temperature_interval: f64,
     pub boost_intervall_size: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct TemperatureOptions {
+    pub target_temperature: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]

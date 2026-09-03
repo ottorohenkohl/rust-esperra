@@ -24,6 +24,7 @@ where
     async fn handle(&mut self, message: Self::Message) {
         match message {
             ConfigMessage::UpdateHeaterOptions(options) => self.config_port.write_heater_options(options).await,
+            ConfigMessage::UpdateTemperatureOptions(options) => self.config_port.write_temperature_options(options).await,
             ConfigMessage::UpdatePidGains(gains) => self.config_port.write_pid_gains(gains).await,
             ConfigMessage::UpdateFirmwareInfo(info) => self.config_port.write_firmware_info(info).await,
             ConfigMessage::UpdateNetworkInfo(info) => self.config_port.write_network_info(info).await,

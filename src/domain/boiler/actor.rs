@@ -41,13 +41,14 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
 
     fn should_heat(&mut self) -> bool {
         let heater_options = self.config_port.read_heater_options();
+        let temperature_options = self.config_port.read_temperature_options();
         let cycle_elapsed_ms = self.cycle_start.elapsed().as_millis();
 
-        if self.current_temperature < heater_options.target_temperature - heater_options.boost_intervall_size {
+        if self.current_temperature < temperature_options.target_temperature - heater_options.boost_intervall_size {
             return true;
         }
 
-        let pid_percentage = self.pid_service.compute(self.current_temperature, heater_options.target_temperature);
+        let pid_percentage = self.pid_service.compute(self.current_temperature, temperature_options.target_temperature);
 
         (cycle_elapsed_ms as f64) < heater_options.heating_cycle_ms as f64 * pid_percentage / 100.0
     }
@@ -57,11 +58,12 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
 
         let should_heat = self.should_heat();
         let heater_options = self.config_port.read_heater_options();
+        let temperature_options = self.config_port.read_temperature_options();
 
         self.heating_output_port.set_active(should_heat).await;
 
-        let lower_bound = heater_options.target_temperature - heater_options.target_temperature_interval;
-        let upper_bound = heater_options.target_temperature + heater_options.target_temperature_interval;
+        let lower_bound = temperature_options.target_temperature - heater_options.target_temperature_interval;
+        let upper_bound = temperature_options.target_temperature + heater_options.target_temperature_interval;
 
         match self.current_temperature {
             current_temperature if (lower_bound..upper_bound).contains(&current_temperature) => {
