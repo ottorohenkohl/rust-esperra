@@ -9,4 +9,18 @@ pub enum ConfigMessage {
     UpdatePidGains(PidGains),
     UpdateFirmwareInfo(FirmwareInfo),
     UpdateNetworkInfo(NetworkInfo),
+    LogHeaterOptions,
+    LogTemperatureOptions,
+    LogPidGains,
+    LogFirmwareInfo,
+    LogNetworkInfo,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub enum ConfigResponse {
+    HeaterOptions(HeaterOptions),
+    TemperatureOptions(TemperatureOptions),
+    PidGains(PidGains),
+    FirmwareInfo(FirmwareInfo),
+    NetworkInfo(NetworkInfo),
 }

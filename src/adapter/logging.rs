@@ -5,7 +5,7 @@ use embassy_sync::channel::Channel;
 use heapless::{String, Vec};
 use serde::Serialize;
 
-const LOG_MESSAGE_CAPACITY: usize = 256;
+const LOG_MESSAGE_CAPACITY: usize = 1024;
 const PUBLIC_NAME_CAPACITY: usize = 64;
 const OUTBOUND_LOG_CAPACITY: usize = 16;
 

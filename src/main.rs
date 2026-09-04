@@ -116,8 +116,8 @@ async fn main(spawner: Spawner) {
     let status_light_actor = LightActor::new(status_light_output_adapter, EspTimerAdapter::new());
     let temperature_sensor_actor = TemperatureSensorActor::new(temperature_adapter, Arc::clone(&logging_port), Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());
     let update_actor = UpdateActor::new(update_actor_ref, update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, power_light_actor_ref.clone(), status_light_actor_ref.clone());
-    let config_actor = ConfigActor::new(Arc::clone(&config_adapter));
-    let energy_actor = EnergyActor::new(energy_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), status_light_actor_ref.clone());
+    let config_actor = ConfigActor::new(Arc::clone(&config_adapter), Arc::clone(&logging_port));
+    let energy_actor = EnergyActor::new(energy_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), status_light_actor_ref.clone(), Arc::clone(&logging_port));
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), BUTTON_ACTOR_MAILBOX.run(button_actor));
     let actor_group_2 = join3(WATER_ACTOR_MAILBOX.run(water_actor), POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor));
@@ -134,6 +134,8 @@ async fn event_loop() {
         WATER_ACTOR_MAILBOX.actor_ref().tell(None, WaterMessage::HandleInputState);
         TEMPERATURE_SENSOR_ACTOR_MAILBOX.actor_ref().tell(None, TemperatureSensorMessage::MeasureTemperature);
         ENERGY_ACTOR_MAILBOX.actor_ref().tell(None, EnergyMessage::CheckInactivity);
+        CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogTemperatureOptions);
+        ENERGY_ACTOR_MAILBOX.actor_ref().tell(None, EnergyMessage::LogActiveState);
 
         Timer::after(TICK_INTERVALL).await;
     }
