@@ -74,8 +74,18 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
             Self::install_firmware(&mut client, &mut flash, firmware_url.as_str()).await?;
 
             return Ok(true)
-
         }
+
+        // Pferde
+        // Tennis
+        // AO
+        // Pfadfinder
+        // Hunde
+
+        // Warum Versicherung?
+        // Sonstige Hobbies?
+        // Geschwister?
+        // Firmenausflug dabei?
 
         Ok(false)
     }

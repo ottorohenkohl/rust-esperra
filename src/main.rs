@@ -81,15 +81,15 @@ async fn main(spawner: Spawner) {
 
     let config_adapter = Arc::new(FlashConfigAdapter::new(Arc::clone(&flash)).await.unwrap());
     let logging_port = Arc::new(MqttLoggingAdapter::new());
-    let heating_output_adapter = EspOutputAdapter::new(peripherals.GPIO11);
-    let status_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO12);
-    let power_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO13);
-    let pump_output_adapter = EspOutputAdapter::new(peripherals.GPIO14);
-    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO4).unwrap();
-    let valve_output_adapter = EspOutputAdapter::new(peripherals.GPIO10);
-    let power_input_adapter = EspInputAdapter::new(peripherals.GPIO20, Pull::Up);
-    let status_input_adapter = EspInputAdapter::new(peripherals.GPIO19, Pull::Up);
-    let water_input_adapter = EspInputAdapter::new(peripherals.GPIO21, Pull::Up);
+    let heating_output_adapter = EspOutputAdapter::new(peripherals.GPIO20);
+    let status_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO39);
+    let power_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO40);
+    let pump_output_adapter = EspOutputAdapter::new(peripherals.GPIO41);
+    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO8).unwrap();
+    let valve_output_adapter = EspOutputAdapter::new(peripherals.GPIO42);
+    let power_input_adapter = EspInputAdapter::new(peripherals.GPIO18, Pull::Up);
+    let status_input_adapter = EspInputAdapter::new(peripherals.GPIO17, Pull::Up);
+    let water_input_adapter = EspInputAdapter::new(peripherals.GPIO16, Pull::Up);
 
     let network = NETWORK_STACK.init(NetworkStackImpl::new(peripherals.WIFI, peripherals.LPWR, peripherals.RNG, peripherals.ADC1, &config_adapter.read_network_info(), spawner));
 
