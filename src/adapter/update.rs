@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ReadConfigPort, FirmwareInfo};
+use crate::domain::config::port::{FirmwareInfo, ReadConfigPort, WriteConfigPort};
 use crate::domain::update::port::{UpdateConfirmation, UpdateError, UpdatePort};
 use crate::library::network::implementation::NetworkStackImpl;
 
@@ -43,7 +43,7 @@ pub struct EspUpdateAdapter<C> {
     config: Arc<C>,
 }
 
-impl<C> EspUpdateAdapter<C> where C: ReadConfigPort {
+impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     pub fn initialize(flash: &mut FlashStorage<'_>) -> Result<(), UpdateError> {
         OtaUpdater::new(flash, &mut [0; PARTITION_TABLE_MAX_LEN]).map_err(|_| UpdateError::InvalidPartitionTable)?;
 
@@ -52,6 +52,18 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort {
 
     pub fn new(network: &'static NetworkStackImpl, flash: SharedFlash, config: Arc<C>) -> Self {
         Self { network, flash, config }
+    }
+
+    async fn persist_current_version(&self) -> Result<(), UpdateError> {
+        let version = String::try_from(env!("CARGO_PKG_VERSION")).map_err(|_| UpdateError::InvalidImage)?;
+
+        let mut firmware_info = self.config.read_firmware_info();
+
+        firmware_info.version = version;
+
+        self.config.write_firmware_info(firmware_info).await;
+
+        Ok(())
     }
 
     async fn check_and_install(&mut self) -> Result<bool, UpdateError> {
@@ -75,17 +87,6 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort {
 
             return Ok(true)
         }
-
-        // Pferde
-        // Tennis
-        // AO
-        // Pfadfinder
-        // Hunde
-
-        // Warum Versicherung?
-        // Sonstige Hobbies?
-        // Geschwister?
-        // Firmenausflug dabei?
 
         Ok(false)
     }
@@ -201,7 +202,7 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort {
     }
 }
 
-impl<C> UpdatePort for EspUpdateAdapter<C> where C: ReadConfigPort {
+impl<C> UpdatePort for EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     async fn update(&mut self) -> Result<UpdateConfirmation, UpdateError> {
         self.network.stack.wait_config_up().await;
         self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str()).await.map_err(|_| UpdateError::Time)?;
@@ -222,6 +223,11 @@ impl<C> UpdatePort for EspUpdateAdapter<C> where C: ReadConfigPort {
 
         if matches!(updater.current_ota_state(), Ok(OtaImageState::New | OtaImageState::PendingVerify)) {
             updater.set_current_ota_state(OtaImageState::Valid).map_err(|_| UpdateError::Flash)?;
+
+            drop(updater);
+            drop(flash);
+
+            self.persist_current_version().await?;
 
             return Ok(UpdateConfirmation::Confirmed);
         }
