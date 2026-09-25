@@ -86,6 +86,7 @@ async fn main(spawner: Spawner) {
     let config_adapter = Arc::new(FlashConfigAdapter::new(Arc::clone(&flash)).await.unwrap());
 
     DebugImpl::set(Color::White).await;
+
     let logging_port = Arc::new(MqttLoggingAdapter::new());
     let heating_output_adapter = EspOutputAdapter::new(peripherals.GPIO21);
     let status_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO39);
@@ -104,6 +105,8 @@ async fn main(spawner: Spawner) {
     let water_input_adapter = EspInputAdapter::new(peripherals.GPIO16, Pull::Up);
 
     let network = NETWORK_STACK.init(NetworkStackImpl::new(peripherals.WIFI, peripherals.LPWR, peripherals.RNG, peripherals.ADC1, &config_adapter.read_network_info(), spawner));
+
+    DebugImpl::set(Color::Green).await;
 
     let update_adapter = EspUpdateAdapter::new(network, Arc::clone(&flash), Arc::clone(&config_adapter));
 
@@ -129,8 +132,13 @@ async fn main(spawner: Spawner) {
     let config_actor = ConfigActor::new(Arc::clone(&config_adapter), Arc::clone(&logging_port));
     let energy_actor = EnergyActor::new(energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), status_light_actor_ref.clone(), Arc::clone(&logging_port));
 
-    let mqtt_config_port: Arc<dyn ReadConfigPort> = Arc::clone(&config_adapter);
+    DebugImpl::set(Color::Cyan).await;
+
+    let mqtt_config_port: Arc<dyn ReadConfigPort> = config_adapter.clone();
+
     MqttMessagingImpl::new(network, mqtt_config_port, boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone(), config_actor_ref, energy_actor_ref.clone(), spawner);
+
+    DebugImpl::set(Color::Blue).await;
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), BUTTON_ACTOR_MAILBOX.run(button_actor));
     let actor_group_2 = join3(WATER_ACTOR_MAILBOX.run(water_actor), POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor));

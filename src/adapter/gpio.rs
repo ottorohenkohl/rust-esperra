@@ -74,9 +74,6 @@ impl<'d> Ds18b20TemperatureAdapter<'d> {
         Self { bus, sensor }
     }
 
-    pub fn sensor_available(&self) -> bool {
-        self.sensor.is_some()
-    }
 
     fn discover(bus: &mut OneWire<Flex<'d>>) -> Result<DS18B20, TemperatureSensorError> {
         let mut delay = Delay::new();

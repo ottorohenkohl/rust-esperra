@@ -39,14 +39,12 @@ impl DebugImpl {
     fn rgb(color: Color) -> (u8, u8, u8) {
         match color {
             Color::Red => (24, 0, 0),
-            Color::Orange => (24, 6, 0),
             Color::Magenta => (24, 0, 12),
             Color::Yellow => (20, 16, 0),
+            Color::White => (12, 12, 12),
             Color::Green => (0, 24, 0),
             Color::Cyan => (0, 16, 16),
             Color::Blue => (0, 0, 24),
-            Color::Violet => (12, 0, 24),
-            Color::White => (12, 12, 12),
         }
     }
 }
