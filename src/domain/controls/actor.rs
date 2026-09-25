@@ -11,7 +11,7 @@ use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
 
 use alloc::sync::Arc;
-use embassy_time::{Duration, Instant};
+use embassy_time::{Duration, Instant, Timer};
 
 const MAINTENANCE_GESTURE_MIN: Duration = Duration::from_secs(8);
 const MAINTENANCE_GESTURE_MAX: Duration = Duration::from_secs(12);
@@ -42,7 +42,7 @@ impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
         matches!(off_duration, Some(duration) if duration >= MAINTENANCE_GESTURE_MIN && duration <= MAINTENANCE_GESTURE_MAX)
     }
 
-    fn handle_power_input(&mut self) {
+    async fn handle_power_input(&mut self) {
         let powered = self.power_input_port.powered_state();
         let previous = self.machine_powered.replace(powered);
 
@@ -54,7 +54,11 @@ impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
             }
             (Some(false), true) | (None, true) => {
                 if self.reached_update_interval() {
-                    return self.update_actor.tell(Some(&self.actor_ref), UpdateMessage::Start);
+                    self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(true));
+                    Timer::after(Duration::from_secs(1)).await;
+                    self.update_actor.tell(Some(&self.actor_ref), UpdateMessage::Start);
+
+                    return;
                 }
 
                 self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(true));
@@ -84,7 +88,7 @@ impl<P, S> Actor for ButtonActor<P, S> where P: InputPort, S: InputPort {
     async fn handle(&mut self, message: Self::Message) {
         match message {
             ButtonMessage::HandleInputStates => {
-                self.handle_power_input();
+                self.handle_power_input().await;
                 self.handle_status_input();
             }
         }
