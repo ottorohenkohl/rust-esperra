@@ -1,6 +1,6 @@
-use serde::Serialize;
-
 use super::port::TemperatureSensorError;
+
+use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LightMessage {

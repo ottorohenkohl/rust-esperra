@@ -37,7 +37,9 @@ impl<P, T, L> Actor for LightActor<P, T, L> where P: OutputPort, T: TimerPort, L
             }
             LightMessage::BlinkTimes(times) => {
                 for _ in 0..(times * 2) {
-                    self.output_port.invert_state().await;
+                    let active = self.output_port.invert_state().await;
+
+                    self.logging_port.log(self, None, &LightResponse::Active(active));
                     self.timer_port.wait_for(500).await;
                 }
 
