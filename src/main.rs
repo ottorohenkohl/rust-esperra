@@ -95,7 +95,7 @@ async fn main(spawner: Spawner) {
 
     DebugImpl::set(Color::Magenta).await;
 
-    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO8);
+    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO15);
 
     DebugImpl::set(Color::Yellow).await;
 
