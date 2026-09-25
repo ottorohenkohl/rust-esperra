@@ -15,6 +15,7 @@ const SAFE_SHUTDOWN_DELAY: Duration = Duration::from_secs(2);
 const UPDATE_INDICATOR_INTERVAL: Duration = Duration::from_millis(500);
 
 pub struct UpdateActor<U: UpdatePort> {
+    public_name: &'static str,
     actor_ref: ActorRef<UpdateMessage>,
     update_port: U,
     button_actor: ActorRef<ButtonMessage>,
@@ -27,8 +28,8 @@ pub struct UpdateActor<U: UpdatePort> {
 }
 
 impl<U: UpdatePort> UpdateActor<U> {
-    pub fn new(actor_ref: ActorRef<UpdateMessage>, update_port: U, button_actor: ActorRef<ButtonMessage>, water_actor: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, temperature_sensor_actor: ActorRef<TemperatureSensorMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) -> Self {
-        Self { actor_ref, update_port, button_actor, water_actor, boiler_actor, brew_actor, temperature_sensor_actor, power_light_actor, status_light_actor }
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<UpdateMessage>, update_port: U, button_actor: ActorRef<ButtonMessage>, water_actor: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, temperature_sensor_actor: ActorRef<TemperatureSensorMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) -> Self {
+        Self { public_name, actor_ref, update_port, button_actor, water_actor, boiler_actor, brew_actor, temperature_sensor_actor, power_light_actor, status_light_actor }
     }
 
     fn acquire_locks(&self) -> bool {
@@ -104,6 +105,10 @@ impl<U: UpdatePort> UpdateActor<U> {
 
 impl<U: UpdatePort> Actor for UpdateActor<U> {
     type Message = UpdateMessage;
+
+    fn name(&self) -> &'static str {
+        self.public_name
+    }
 
     async fn handle(&mut self, message: Self::Message) {
         match message {

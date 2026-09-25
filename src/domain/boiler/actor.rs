@@ -11,6 +11,7 @@ use alloc::sync::Arc;
 use embassy_time::Instant;
 
 pub struct BoilerActor<C, H> {
+    public_name: &'static str,
     actor_ref: ActorRef<BoilerMessage>,
     config_port: Arc<C>,
     current_temperature: Option<f64>,
@@ -21,13 +22,13 @@ pub struct BoilerActor<C, H> {
 }
 
 impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
-    pub fn new(actor_ref: ActorRef<BoilerMessage>, config_port: Arc<C>, heating_output_port: H, status_light_actor: ActorRef<LightMessage>) -> Self {
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<BoilerMessage>, config_port: Arc<C>, heating_output_port: H, status_light_actor: ActorRef<LightMessage>) -> Self {
         let pid_service = PidService::new(Arc::clone(&config_port));
         let cycle_start = Instant::now();
 
         let current_temperature = None;
 
-        Self { actor_ref, config_port, current_temperature, cycle_start, heating_output_port, pid_service, status_light_actor }
+        Self { public_name, actor_ref, config_port, current_temperature, cycle_start, heating_output_port, pid_service, status_light_actor }
     }
 
     fn update_cycle(&mut self) {
@@ -80,6 +81,10 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
 
 impl<C, H> Actor for BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
     type Message = BoilerMessage;
+
+    fn name(&self) -> &'static str {
+        self.public_name
+    }
 
     async fn handle(&mut self, message: Self::Message) {
         match message {

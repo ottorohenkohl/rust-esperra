@@ -8,6 +8,11 @@ pub enum LightMessage {
     BlinkTimes(u8),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub enum LightResponse {
+    Active(bool),
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TemperatureSensorMessage {
     MeasureTemperature,
