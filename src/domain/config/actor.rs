@@ -1,4 +1,4 @@
-use super::port::ConfigPort;
+use super::port::{ReadConfigPort, WriteConfigPort};
 use super::protocol::{ConfigMessage, ConfigResponse};
 
 use crate::domain::logging::port::LoggingPort;
@@ -19,7 +19,7 @@ impl<C, L> ConfigActor<C, L> {
 
 impl<C, L> Actor for ConfigActor<C, L>
 where
-    C: ConfigPort,
+    C: ReadConfigPort + WriteConfigPort,
     L: LoggingPort,
 {
     type Message = ConfigMessage;

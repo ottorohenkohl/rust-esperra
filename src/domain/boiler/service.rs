@@ -1,4 +1,4 @@
-use crate::domain::config::port::ConfigPort;
+use crate::domain::config::port::ReadConfigPort;
 
 use alloc::sync::Arc;
 use embassy_time::Instant;
@@ -10,7 +10,7 @@ pub struct PidService<C> {
     stored_integral: f64,
 }
 
-impl<C> PidService<C> where C: ConfigPort {
+impl<C> PidService<C> where C: ReadConfigPort {
     pub fn new(config_provider: Arc<C>) -> Self {
         let last_temperature = 0.0;
         let stored_integral = 0.0;

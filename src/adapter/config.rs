@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ConfigError, ConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, TemperatureOptions};
+use crate::domain::config::port::{ConfigError, ReadConfigPort, WriteConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, TemperatureOptions};
 
 use alloc::sync::Arc;
 use core::cell::RefCell;
@@ -210,7 +210,7 @@ impl FlashConfigAdapter {
     }
 }
 
-impl ConfigPort for FlashConfigAdapter {
+impl ReadConfigPort for FlashConfigAdapter {
     fn read_heater_options(&self) -> HeaterOptions {
         critical_section::with(|cs| self.state.borrow_ref(cs).heater_options)
     }
@@ -230,7 +230,9 @@ impl ConfigPort for FlashConfigAdapter {
     fn read_network_info(&self) -> NetworkInfo {
         critical_section::with(|cs| self.state.borrow_ref(cs).network_info.clone())
     }
+}
 
+impl WriteConfigPort for FlashConfigAdapter {
     async fn write_heater_options(&self, options: HeaterOptions) {
         let record = critical_section::with(|cs| {
             let mut state = self.state.borrow_ref_mut(cs);

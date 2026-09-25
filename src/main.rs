@@ -10,7 +10,7 @@ use crate::adapter::gpio::{Ds18b20TemperatureAdapter, EspInputAdapter, EspOutput
 use crate::adapter::logging::MqttLoggingAdapter;
 use crate::adapter::update::EspUpdateAdapter;
 use crate::domain::config::actor::ConfigActor;
-use crate::domain::config::port::ConfigPort;
+use crate::domain::config::port::ReadConfigPort;
 use crate::domain::config::protocol::ConfigMessage;
 use crate::domain::boiler::actor::BoilerActor;
 use crate::domain::boiler::protocol::BoilerMessage;
@@ -83,7 +83,6 @@ async fn main(spawner: Spawner) {
     EspUpdateAdapter::<FlashConfigAdapter>::initialize(&mut flash).unwrap();
 
     let flash = Arc::new(Mutex::<CriticalSectionRawMutex, _>::new(flash));
-
     let config_adapter = Arc::new(FlashConfigAdapter::new(Arc::clone(&flash)).await.unwrap());
 
     DebugImpl::set(Color::White).await;
@@ -96,11 +95,9 @@ async fn main(spawner: Spawner) {
     DebugImpl::set(Color::Magenta).await;
 
     let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO8);
-    if !temperature_adapter.sensor_available() {
-        Timer::after(Duration::from_secs(2)).await;
-    }
 
     DebugImpl::set(Color::Yellow).await;
+
     let valve_output_adapter = EspOutputAdapter::new(peripherals.GPIO42);
     let power_input_adapter = EspInputAdapter::new(peripherals.GPIO18, Pull::Up);
     let status_input_adapter = EspInputAdapter::new(peripherals.GPIO17, Pull::Up);
@@ -132,7 +129,8 @@ async fn main(spawner: Spawner) {
     let config_actor = ConfigActor::new(Arc::clone(&config_adapter), Arc::clone(&logging_port));
     let energy_actor = EnergyActor::new(energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), status_light_actor_ref.clone(), Arc::clone(&logging_port));
 
-    MqttMessagingImpl::new(network, &config_adapter.read_network_info(), boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone(), config_actor_ref, energy_actor_ref.clone(), spawner);
+    let mqtt_config_port: Arc<dyn ReadConfigPort> = Arc::clone(&config_adapter);
+    MqttMessagingImpl::new(network, mqtt_config_port, boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone(), config_actor_ref, energy_actor_ref.clone(), spawner);
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), BUTTON_ACTOR_MAILBOX.run(button_actor));
     let actor_group_2 = join3(WATER_ACTOR_MAILBOX.run(water_actor), POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor));
@@ -140,7 +138,6 @@ async fn main(spawner: Spawner) {
 
     join3(actor_group_1, actor_group_2, actor_group_3).await;
 }
-
 
 async fn event_loop() {
     loop {

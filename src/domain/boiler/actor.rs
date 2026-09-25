@@ -1,7 +1,7 @@
 use super::protocol::BoilerMessage;
 use super::service::PidService;
 
-use crate::domain::config::port::ConfigPort;
+use crate::domain::config::port::ReadConfigPort;
 use crate::domain::gpio::port::OutputPort;
 use crate::domain::gpio::protocol::LightMessage;
 use crate::library::actor::interface::Actor;
@@ -20,7 +20,7 @@ pub struct BoilerActor<C, H> {
     status_light_actor: ActorRef<LightMessage>
 }
 
-impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
+impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
     pub fn new(actor_ref: ActorRef<BoilerMessage>, config_port: Arc<C>, heating_output_port: H, status_light_actor: ActorRef<LightMessage>) -> Self {
         let pid_service = PidService::new(Arc::clone(&config_port));
         let cycle_start = Instant::now();
@@ -78,7 +78,7 @@ impl<C, H> BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
     }
 }
 
-impl<C, H> Actor for BoilerActor<C, H> where C: ConfigPort, H: OutputPort {
+impl<C, H> Actor for BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
     type Message = BoilerMessage;
 
     async fn handle(&mut self, message: Self::Message) {

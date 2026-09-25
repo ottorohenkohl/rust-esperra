@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ConfigPort, FirmwareInfo};
+use crate::domain::config::port::{ReadConfigPort, FirmwareInfo};
 use crate::domain::update::port::{UpdateConfirmation, UpdateError, UpdatePort};
 use crate::library::network::implementation::NetworkStackImpl;
 
@@ -43,7 +43,7 @@ pub struct EspUpdateAdapter<C> {
     config: Arc<C>,
 }
 
-impl<C> EspUpdateAdapter<C> where C: ConfigPort {
+impl<C> EspUpdateAdapter<C> where C: ReadConfigPort {
     pub fn initialize(flash: &mut FlashStorage<'_>) -> Result<(), UpdateError> {
         OtaUpdater::new(flash, &mut [0; PARTITION_TABLE_MAX_LEN]).map_err(|_| UpdateError::InvalidPartitionTable)?;
 
@@ -201,7 +201,7 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
     }
 }
 
-impl<C> UpdatePort for EspUpdateAdapter<C> where C: ConfigPort {
+impl<C> UpdatePort for EspUpdateAdapter<C> where C: ReadConfigPort {
     async fn update(&mut self) -> Result<UpdateConfirmation, UpdateError> {
         self.network.stack.wait_config_up().await;
         self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str()).await.map_err(|_| UpdateError::Time)?;
