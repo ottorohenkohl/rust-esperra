@@ -161,9 +161,15 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     }
 
     fn latest_firmware_url(firmware_info: &FirmwareInfo) -> Result<String<256>, UpdateError> {
+        const LATEST_FIRMWARE_PATH: &str = "/latest/firmware-ota.bin";
+
+        if firmware_info.url.ends_with(LATEST_FIRMWARE_PATH) {
+            return Ok(firmware_info.url.clone());
+        }
+
         let mut url = String::new();
 
-        write!(&mut url, "{}/latest/firmware-ota.bin", firmware_info.url.trim_end_matches('/')).map_err(|_| UpdateError::Http)?;
+        write!(&mut url, "{}{}", firmware_info.url.trim_end_matches('/'), LATEST_FIRMWARE_PATH).map_err(|_| UpdateError::Http)?;
 
         Ok(url)
     }

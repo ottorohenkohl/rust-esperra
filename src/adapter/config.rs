@@ -184,7 +184,7 @@ impl FlashConfigAdapter {
     }
 
     fn default_firmware_info() -> FirmwareInfo {
-        let url = String::try_from(option_env!("ESPERRA_FIRMWARE_URL").unwrap_or("https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware/latest/firmware-ota.bin")).unwrap();
+        let url = String::try_from(option_env!("ESPERRA_FIRMWARE_URL").unwrap_or("https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware")).unwrap();
         let version = String::try_from(env!("CARGO_PKG_VERSION")).unwrap();
 
         FirmwareInfo { url, version }
