@@ -25,6 +25,8 @@ use crate::domain::gpio::protocol::{LightMessage, TemperatureSensorMessage};
 use crate::domain::update::actor::UpdateActor;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::implementation::EmbassyMailboxImpl;
+use crate::library::debug::implementation::DebugImpl;
+use crate::library::debug::protocol::Color;
 use crate::library::messaging::implementation::MqttMessagingImpl;
 use crate::library::network::implementation::NetworkStackImpl;
 
@@ -67,11 +69,14 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
-    esp_alloc::heap_allocator!(size: 64 * 1024);
+    esp_alloc::heap_allocator!(size: 128 * 1024);
 
     let peripherals = esp_hal::init(Config::default().with_cpu_clock(CpuClock::max()));
 
     esp_rtos::start(TimerGroup::new(peripherals.TIMG0).timer0, SoftwareInterruptControl::new(peripherals.SW_INTERRUPT).software_interrupt0);
+
+    DebugImpl::initialize(peripherals.RMT, peripherals.GPIO48, peripherals.GPIO38, spawner);
+    DebugImpl::set(Color::Red).await;
 
     let mut flash = FlashStorage::new(peripherals.FLASH);
 
@@ -80,12 +85,22 @@ async fn main(spawner: Spawner) {
     let flash = Arc::new(Mutex::<CriticalSectionRawMutex, _>::new(flash));
 
     let config_adapter = Arc::new(FlashConfigAdapter::new(Arc::clone(&flash)).await.unwrap());
+
+    DebugImpl::set(Color::White).await;
     let logging_port = Arc::new(MqttLoggingAdapter::new());
-    let heating_output_adapter = EspOutputAdapter::new(peripherals.GPIO20);
+    let heating_output_adapter = EspOutputAdapter::new(peripherals.GPIO21);
     let status_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO39);
     let power_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO40);
     let pump_output_adapter = EspOutputAdapter::new(peripherals.GPIO41);
-    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO8).unwrap();
+
+    DebugImpl::set(Color::Magenta).await;
+
+    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO8);
+    if !temperature_adapter.sensor_available() {
+        Timer::after(Duration::from_secs(2)).await;
+    }
+
+    DebugImpl::set(Color::Yellow).await;
     let valve_output_adapter = EspOutputAdapter::new(peripherals.GPIO42);
     let power_input_adapter = EspInputAdapter::new(peripherals.GPIO18, Pull::Up);
     let status_input_adapter = EspInputAdapter::new(peripherals.GPIO17, Pull::Up);
@@ -106,8 +121,6 @@ async fn main(spawner: Spawner) {
     let config_actor_ref = CONFIG_ACTOR_MAILBOX.actor_ref();
     let energy_actor_ref = ENERGY_ACTOR_MAILBOX.actor_ref();
 
-    MqttMessagingImpl::new(network, &config_adapter.read_network_info(), boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone(), config_actor_ref, energy_actor_ref.clone(), spawner);
-
     let boiler_actor = BoilerActor::new(boiler_actor_ref.clone(), Arc::clone(&config_adapter), heating_output_adapter, status_light_actor_ref.clone());
     let brew_actor = BrewActor::new(pump_output_adapter, valve_output_adapter);
     let button_actor = ButtonActor::new(button_actor_ref.clone(), brew_actor_ref.clone(), power_input_adapter, status_input_adapter, update_actor_ref.clone(), energy_actor_ref.clone());
@@ -115,9 +128,11 @@ async fn main(spawner: Spawner) {
     let power_light_actor = LightActor::new(power_light_output_adapter, EspTimerAdapter::new());
     let status_light_actor = LightActor::new(status_light_output_adapter, EspTimerAdapter::new());
     let temperature_sensor_actor = TemperatureSensorActor::new(temperature_adapter, Arc::clone(&logging_port), Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());
-    let update_actor = UpdateActor::new(update_actor_ref, update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, power_light_actor_ref.clone(), status_light_actor_ref.clone());
+    let update_actor = UpdateActor::new(update_actor_ref.clone(), update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, power_light_actor_ref.clone(), status_light_actor_ref.clone());
     let config_actor = ConfigActor::new(Arc::clone(&config_adapter), Arc::clone(&logging_port));
-    let energy_actor = EnergyActor::new(energy_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), status_light_actor_ref.clone(), Arc::clone(&logging_port));
+    let energy_actor = EnergyActor::new(energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), status_light_actor_ref.clone(), Arc::clone(&logging_port));
+
+    MqttMessagingImpl::new(network, &config_adapter.read_network_info(), boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone(), config_actor_ref, energy_actor_ref.clone(), spawner);
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), BUTTON_ACTOR_MAILBOX.run(button_actor));
     let actor_group_2 = join3(WATER_ACTOR_MAILBOX.run(water_actor), POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor));

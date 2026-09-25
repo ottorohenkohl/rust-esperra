@@ -15,8 +15,8 @@ Scaffolded with [`esp-generate`](https://github.com/esp-rs/esp-generate)
 
 Provides an ESP32-S3 boiler-control firmware built around a small typed actor facade over
 Embassy. The composition root in `src/main.rs` wires a boiler, a DS18B20 temperature sensor,
-a heating-element output, and a one-second temperature measurement interval. Hardware pins
-currently default to GPIO4 for the OneWire bus and GPIO5 for the heating element.
+a heating-element output, and a one-second temperature measurement interval. The heating output
+uses GPIO21 so native USB Serial/JTAG on GPIO19/GPIO20 remains available for diagnostics.
 
 ## Project conventions
 

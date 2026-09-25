@@ -89,7 +89,7 @@ impl NetworkStackImpl {
 
         let result = get_time(server, &socket, context).await.map_err(|_| NetworkError::Time)?;
 
-        self.rtc.set_current_time_us(result.sec() as u64 * 1_000_000 + (result.sec_fraction() as u64 * 1_000_000) >> 32);
+        self.rtc.set_current_time_us(result.sec() as u64 * 1_000_000 + ((result.sec_fraction() as u64 * 1_000_000) >> 32));
 
         Ok(())
     }

@@ -18,7 +18,7 @@ use embassy_executor::Spawner;
 use embassy_futures::select::Either;
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
-use embassy_time::{Duration, Timer};
+use embassy_time::{with_timeout, Duration, Timer};
 use heapless::String;
 use mbedtls_rs::{Certificate, ClientSessionConfig, Session, SessionConfig};
 use rust_mqtt::Bytes;
@@ -36,10 +36,11 @@ use mbedtls_rs::X509;
 
 const SOCKET_BUFFER_SIZE: usize = 4096;
 
+const NETWORK_OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 const TOPIC_CAPACITY: usize = 96;
 
-type MqttClient<'a> = Client<'a, Session<'a, TcpSocket<'a>>, AllocBuffer, 3, 1, 1, 0>;
+type MqttClient<'a> = Client<'a, Session<'a, TcpSocket<'a>>, AllocBuffer, 5, 1, 1, 0>;
 
 pub struct MqttMessagingImpl {
     network: &'static NetworkStackImpl,
@@ -48,6 +49,7 @@ pub struct MqttMessagingImpl {
     client_id: String<64>,
     username: String<64>,
     password: String<64>,
+    ntp_server: String<64>,
     topic_prefix: String<64>,
     boiler: ActorRef<BoilerMessage>,
     brew: ActorRef<BrewMessage>,
@@ -58,7 +60,7 @@ pub struct MqttMessagingImpl {
 
 impl MqttMessagingImpl {
     pub fn new(network: &'static NetworkStackImpl, info: &NetworkInfo, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, config: ActorRef<ConfigMessage>, energy: ActorRef<EnergyMessage>, spawner: Spawner) {
-        let implementation = Self { network, hostname: info.mqtt_hostname.clone(), port: info.mqtt_port, client_id: info.mqtt_client_id.clone(), username: info.mqtt_username.clone(), password: info.mqtt_password.clone(), topic_prefix: info.mqtt_topic_prefix.clone(), boiler, brew, update, config, energy };
+        let implementation = Self { network, hostname: info.mqtt_hostname.clone(), port: info.mqtt_port, client_id: info.mqtt_client_id.clone(), username: info.mqtt_username.clone(), password: info.mqtt_password.clone(), ntp_server: info.ntp_server.clone(), topic_prefix: info.mqtt_topic_prefix.clone(), boiler, brew, update, config, energy };
 
         spawner.spawn(messaging_task(implementation).unwrap());
     }
@@ -87,6 +89,10 @@ impl MqttMessagingImpl {
             return Err(MessagingError::Config);
         }
 
+        self.network.stack.wait_config_up().await;
+
+        with_timeout(NETWORK_OPERATION_TIMEOUT, self.network.synchronize_time(self.ntp_server.as_str())).await.map_err(|_| MessagingError::Mqtt)?.map_err(|_| MessagingError::Mqtt)?;
+
         let addresses = self.network.stack.dns_query(self.hostname.as_str(), DnsQueryType::A).await.map_err(|_| MessagingError::Dns)?;
 
         let mut rx_buffer = [0; SOCKET_BUFFER_SIZE];
@@ -94,6 +100,7 @@ impl MqttMessagingImpl {
 
         let mut socket = TcpSocket::new(self.network.stack, &mut rx_buffer, &mut tx_buffer);
 
+        socket.set_timeout(Some(NETWORK_OPERATION_TIMEOUT));
         socket.connect((*addresses.first().ok_or(MessagingError::Dns)?, self.port)).await.map_err(|_| MessagingError::Tcp)?;
 
         let mut hostname = [0u8; 65];
@@ -111,7 +118,7 @@ impl MqttMessagingImpl {
 
         let mut tls = Session::new(self.network.tls.reference(), socket, &tls_config).map_err(|_| MessagingError::Tls)?;
 
-        tls.connect().await.map_err(|_| MessagingError::Tls)?;
+        with_timeout(NETWORK_OPERATION_TIMEOUT, tls.connect()).await.map_err(|_| MessagingError::Tls)?.map_err(|_| MessagingError::Tls)?;
 
         let mut buffer = AllocBuffer;
         let mut client = MqttClient::new(&mut buffer);
@@ -125,7 +132,7 @@ impl MqttMessagingImpl {
             options = options.password(MqttBinary::from_slice(self.password.as_bytes()).map_err(|_| MessagingError::Config)?);
         }
 
-        client.connect(tls, &options, Some(MqttString::from_str(self.client_id.as_str()).map_err(|_| MessagingError::Config)?)).await.map_err(|_| MessagingError::Mqtt)?;
+        with_timeout(NETWORK_OPERATION_TIMEOUT, client.connect(tls, &options, Some(MqttString::from_str(self.client_id.as_str()).map_err(|_| MessagingError::Config)?))).await.map_err(|_| MessagingError::Mqtt)?.map_err(|_| MessagingError::Mqtt)?;
 
         self.subscribe(&mut client, "/in/boiler").await?;
         self.subscribe(&mut client, "/in/brew").await?;
