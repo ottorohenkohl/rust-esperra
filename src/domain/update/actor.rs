@@ -1,22 +1,20 @@
 use super::port::{UpdateConfirmation, UpdatePort};
-use super::protocol::{UpdateMessage, UpdateResponse};
+use super::protocol::UpdateMessage;
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::controls::protocol::{ButtonMessage, WaterMessage};
 use crate::domain::gpio::protocol::{LightMessage, TemperatureSensorMessage};
-use crate::domain::logging::port::LoggingPort;
 use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
 
-use alloc::sync::Arc;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 
 const SAFE_SHUTDOWN_DELAY: Duration = Duration::from_secs(2);
 const UPDATE_INDICATOR_INTERVAL: Duration = Duration::from_millis(500);
 
-pub struct UpdateActor<U: UpdatePort, L> {
+pub struct UpdateActor<U: UpdatePort> {
     public_name: &'static str,
     actor_ref: ActorRef<UpdateMessage>,
     update_port: U,
@@ -27,12 +25,11 @@ pub struct UpdateActor<U: UpdatePort, L> {
     temperature_sensor_actor: ActorRef<TemperatureSensorMessage>,
     power_light_actor: ActorRef<LightMessage>,
     status_light_actor: ActorRef<LightMessage>,
-    logging_port: Arc<L>,
 }
 
-impl<U: UpdatePort, L> UpdateActor<U, L> where L: LoggingPort {
-    pub fn new(public_name: &'static str, actor_ref: ActorRef<UpdateMessage>, update_port: U, button_actor: ActorRef<ButtonMessage>, water_actor: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, temperature_sensor_actor: ActorRef<TemperatureSensorMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>, logging_port: Arc<L>) -> Self {
-        Self { public_name, actor_ref, update_port, button_actor, water_actor, boiler_actor, brew_actor, temperature_sensor_actor, power_light_actor, status_light_actor, logging_port }
+impl<U: UpdatePort> UpdateActor<U> {
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<UpdateMessage>, update_port: U, button_actor: ActorRef<ButtonMessage>, water_actor: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, temperature_sensor_actor: ActorRef<TemperatureSensorMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>) -> Self {
+        Self { public_name, actor_ref, update_port, button_actor, water_actor, boiler_actor, brew_actor, temperature_sensor_actor, power_light_actor, status_light_actor }
     }
 
     fn acquire_locks(&self) -> bool {
@@ -74,10 +71,6 @@ impl<U: UpdatePort, L> UpdateActor<U, L> where L: LoggingPort {
         }
     }
 
-    fn publish(&self) {
-        self.logging_port.log(self, None, &UpdateResponse::Version(self.update_port.current_version()));
-    }
-
     async fn start(&mut self) {
         if self.acquire_locks() {
             self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
@@ -110,7 +103,7 @@ impl<U: UpdatePort, L> UpdateActor<U, L> where L: LoggingPort {
     }
 }
 
-impl<U: UpdatePort, L: LoggingPort> Actor for UpdateActor<U, L> {
+impl<U: UpdatePort> Actor for UpdateActor<U> {
     type Message = UpdateMessage;
 
     fn name(&self) -> &'static str {
@@ -120,7 +113,6 @@ impl<U: UpdatePort, L: LoggingPort> Actor for UpdateActor<U, L> {
     async fn handle(&mut self, message: Self::Message) {
         match message {
             UpdateMessage::Start => self.start().await,
-            UpdateMessage::Publish => self.publish(),
         }
     }
 }
