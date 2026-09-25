@@ -117,13 +117,8 @@ impl MqttMessagingImpl {
         let mut client = MqttClient::new(&mut buffer);
         let mut options = ConnectOptions::new().clean_start();
 
-        if !info.mqtt_username.is_empty() {
-            options = options.user_name(MqttString::from_str(info.mqtt_username.as_str()).map_err(|_| MessagingError::Config)?);
-        }
-
-        if !info.mqtt_password.is_empty() {
-            options = options.password(MqttBinary::from_slice(info.mqtt_password.as_bytes()).map_err(|_| MessagingError::Config)?);
-        }
+        options = options.user_name(MqttString::from_str(info.mqtt_username.as_str()).map_err(|_| MessagingError::Config)?);
+        options = options.password(MqttBinary::from_slice(info.mqtt_password.as_bytes()).map_err(|_| MessagingError::Config)?);
 
         with_timeout(NETWORK_OPERATION_TIMEOUT, client.connect(tls, &options, Some(MqttString::from_str(info.mqtt_client_id.as_str()).map_err(|_| MessagingError::Config)?))).await.map_err(|_| MessagingError::Mqtt)?.map_err(|_| MessagingError::Mqtt)?;
 
