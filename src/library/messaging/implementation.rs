@@ -1,4 +1,3 @@
-use crate::adapter::logging::{self, LoggedMessage};
 use super::protocol::MessagingError;
 use super::task::messaging_task;
 
@@ -11,6 +10,10 @@ use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::model::ActorRef;
 use crate::library::network::implementation::NetworkStackImpl;
 
+use crate::adapter::logging::LoggedMessage;
+
+use crate::adapter::logging;
+
 use crate::library::network::implementation::ROOT_CA;
 
 use alloc::sync::Arc;
@@ -19,7 +22,7 @@ use embassy_executor::Spawner;
 use embassy_futures::select::Either;
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
-use embassy_time::{with_timeout, Duration, Timer};
+use embassy_time::{Duration, Timer};
 use heapless::String;
 use mbedtls_rs::{Certificate, ClientSessionConfig, Session, SessionConfig};
 use rust_mqtt::Bytes;
@@ -29,8 +32,9 @@ use rust_mqtt::client::options::{ConnectOptions, PublicationOptions, Subscriptio
 use rust_mqtt::client::Client;
 use rust_mqtt::types::{MqttBinary, MqttString, TopicFilter, TopicName};
 use serde::Deserialize;
-use serde_json_core::from_slice;
 
+use embassy_time::with_timeout;
+use serde_json_core::from_slice;
 use embassy_futures::select::select;
 
 use mbedtls_rs::X509;
@@ -127,7 +131,6 @@ impl MqttMessagingImpl {
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/update").await?;
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/config").await?;
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/energy").await?;
-
 
         loop {
             match select(logging::receive_log(), client.poll()).await {
