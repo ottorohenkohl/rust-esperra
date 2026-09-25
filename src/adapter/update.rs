@@ -76,17 +76,6 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort {
             return Ok(true)
         }
 
-        // Pferde
-        // Tennis
-        // AO
-        // Pfadfinder
-        // Hunde
-
-        // Warum Versicherung?
-        // Sonstige Hobbies?
-        // Geschwister?
-        // Firmenausflug dabei?
-
         Ok(false)
     }
 
@@ -202,6 +191,10 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort {
 }
 
 impl<C> UpdatePort for EspUpdateAdapter<C> where C: ReadConfigPort {
+    fn current_version(&self) -> String<32> {
+        self.config.read_firmware_info().version
+    }
+
     async fn update(&mut self) -> Result<UpdateConfirmation, UpdateError> {
         self.network.stack.wait_config_up().await;
         self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str()).await.map_err(|_| UpdateError::Time)?;
