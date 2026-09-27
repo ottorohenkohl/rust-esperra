@@ -23,6 +23,7 @@ use reqwless::{Certificate, TlsVersion};
 use static_cell::StaticCell;
 
 use core::str::from_utf8;
+use embassy_time::{Duration, with_timeout};
 use esp_hal::system::software_reset;
 
 use esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN;
@@ -31,6 +32,7 @@ use reqwless::X509;
 const UPDATE_HEADERS: [(&str, &str); 1] = [("Connection", "close")];
 const IMAGE_HEADER_SIZE: usize = 80;
 const FIRMWARE_BUFFER_SIZE: usize = 4096;
+const NETWORK_OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 static TCP_STATE: StaticCell<TcpClientState<1, 4096, 4096>> = StaticCell::new();
 
@@ -92,7 +94,7 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     }
 
     async fn fetch_latest_version(client: &mut FirmwareHttpClient<'_>, firmware_url: &str) -> Result<String<32>, UpdateError> {
-        let mut response_buffer = [0; 256];
+        let mut response_buffer = [0; FIRMWARE_BUFFER_SIZE];
         let request = client.request(Method::GET, firmware_url).await.map_err(|_| UpdateError::Http)?;
         let mut request = request.headers(&UPDATE_HEADERS);
         let response = request.send(&mut response_buffer).await.map_err(|_| UpdateError::Http)?;
@@ -211,7 +213,7 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
 impl<C> UpdatePort for EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     async fn update(&mut self) -> Result<UpdateConfirmation, UpdateError> {
         self.network.stack.wait_config_up().await;
-        self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str()).await.map_err(|_| UpdateError::Time)?;
+        with_timeout(NETWORK_OPERATION_TIMEOUT, self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str())).await.map_err(|_| UpdateError::Time)?.map_err(|_| UpdateError::Time)?;
 
         if self.check_and_install().await? {
             software_reset();
