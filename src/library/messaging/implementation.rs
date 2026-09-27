@@ -6,6 +6,7 @@ use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::config::port::ReadConfigPort;
 use crate::domain::config::protocol::ConfigMessage;
 use crate::domain::energy::protocol::EnergyMessage;
+use crate::domain::update::actor::update_in_progress;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::model::ActorRef;
 use crate::library::network::implementation::NetworkStackImpl;
@@ -44,8 +45,13 @@ const SOCKET_BUFFER_SIZE: usize = 4096;
 const NETWORK_OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 const TOPIC_CAPACITY: usize = 96;
+const UPDATE_STATE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 type MqttClient<'a> = Client<'a, Session<'a, TcpSocket<'a>>, AllocBuffer, 5, 1, 1, 0>;
+
+enum ServeOutcome {
+    UpdateRequested,
+}
 
 pub struct MqttMessagingImpl {
     network: &'static NetworkStackImpl,
@@ -77,13 +83,32 @@ impl MqttMessagingImpl {
 impl MqttMessagingImpl {
     pub async fn run(self) -> ! {
         loop {
-            if let Err(_) = self.connect_and_serve().await {
-                Timer::after(RECONNECT_DELAY).await;
+            match self.connect_and_serve().await {
+                Ok(ServeOutcome::UpdateRequested) => self.wait_for_update().await,
+                Err(_) => {
+                    Timer::after(RECONNECT_DELAY).await;
+                }
             }
         }
     }
 
-    async fn connect_and_serve(&self) -> Result<(), MessagingError> {
+    async fn wait_for_update(&self) {
+        #[cfg(feature = "ota-debug-harness")]
+        esp_println::println!("mqtt: update requested; closing TLS session for OTA");
+
+        // The update actor is scheduled after this task yields. Wait once before
+        // inspecting its state so a queued update cannot race a reconnect.
+        Timer::after(UPDATE_STATE_POLL_INTERVAL).await;
+
+        while update_in_progress() {
+            Timer::after(UPDATE_STATE_POLL_INTERVAL).await;
+        }
+
+        #[cfg(feature = "ota-debug-harness")]
+        esp_println::println!("mqtt: OTA finished; reconnecting");
+    }
+
+    async fn connect_and_serve(&self) -> Result<ServeOutcome, MessagingError> {
         let info = self.config_port.read_network_info();
 
         self.network.stack.wait_config_up().await;
@@ -140,7 +165,11 @@ impl MqttMessagingImpl {
                         let topic = publish.topic.as_ref().as_ref();
                         let payload = publish.message.as_ref();
 
-                        self.handle_command(info.mqtt_topic_prefix.as_str(), topic, payload)?;
+                        if self.handle_command(info.mqtt_topic_prefix.as_str(), topic, payload)? {
+                            // Returning drops the MQTT client, TLS session and its
+                            // buffers before the update actor opens its HTTPS session.
+                            return Ok(ServeOutcome::UpdateRequested);
+                        }
                     }
                 }
             }
@@ -172,13 +201,18 @@ impl MqttMessagingImpl {
         Ok(())
     }
 
-    fn dispatch<Message>(&self, payload: &[u8], actor: &ActorRef<Message>) where Message: for<'a> Deserialize<'a> + 'static {
-        if let Ok((command, _)) = from_slice(payload) {
-            actor.tell(None, command);
+    fn dispatch<Message>(&self, payload: &[u8], actor: &ActorRef<Message>) -> bool where Message: for<'a> Deserialize<'a> + 'static {
+        match from_slice(payload) {
+            Ok((command, _)) => {
+                actor.tell(None, command);
+
+                true
+            }
+            Err(_) => false,
         }
     }
 
-    fn handle_command(&self, topic_prefix: &str, topic: &str, payload: &[u8]) -> Result<(), MessagingError> {
+    fn handle_command(&self, topic_prefix: &str, topic: &str, payload: &[u8]) -> Result<bool, MessagingError> {
         let boiler_topic = Self::topic(topic_prefix, "/in/boiler").map_err(|_| MessagingError::Config)?;
         let brew_topic = Self::topic(topic_prefix, "/in/brew").map_err(|_| MessagingError::Config)?;
         let update_topic = Self::topic(topic_prefix, "/in/update").map_err(|_| MessagingError::Config)?;
@@ -186,15 +220,25 @@ impl MqttMessagingImpl {
         let energy_topic = Self::topic(topic_prefix, "/in/energy").map_err(|_| MessagingError::Config)?;
 
         match topic {
-            topic if topic == boiler_topic.as_str() => self.dispatch(payload, &self.boiler),
-            topic if topic == brew_topic.as_str() => self.dispatch(payload, &self.brew),
-            topic if topic == update_topic.as_str() => self.dispatch(payload, &self.update),
-            topic if topic == config_topic.as_str() => self.dispatch(payload, &self.config),
-            topic if topic == energy_topic.as_str() => self.dispatch(payload, &self.energy),
+            topic if topic == boiler_topic.as_str() => {
+                self.dispatch(payload, &self.boiler);
+            }
+            topic if topic == brew_topic.as_str() => {
+                self.dispatch(payload, &self.brew);
+            }
+            topic if topic == update_topic.as_str() => {
+                return Ok(self.dispatch(payload, &self.update));
+            }
+            topic if topic == config_topic.as_str() => {
+                self.dispatch(payload, &self.config);
+            }
+            topic if topic == energy_topic.as_str() => {
+                self.dispatch(payload, &self.energy);
+            }
 
             _ => {}
         }
 
-        Ok(())
+        Ok(false)
     }
 }

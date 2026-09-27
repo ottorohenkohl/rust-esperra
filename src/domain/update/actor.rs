@@ -8,11 +8,18 @@ use crate::domain::gpio::protocol::{LightMessage, TemperatureSensorMessage};
 use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
 
+use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 
 const SAFE_SHUTDOWN_DELAY: Duration = Duration::from_secs(2);
 const UPDATE_INDICATOR_INTERVAL: Duration = Duration::from_millis(500);
+
+static UPDATE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+pub fn update_in_progress() -> bool {
+    UPDATE_IN_PROGRESS.load(Ordering::Acquire)
+}
 
 pub struct UpdateActor<U: UpdatePort> {
     public_name: &'static str,
@@ -72,6 +79,7 @@ impl<U: UpdatePort> UpdateActor<U> {
     }
 
     async fn start(&mut self) {
+        UPDATE_IN_PROGRESS.store(true, Ordering::Release);
         if self.acquire_locks() {
             self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
             self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
@@ -100,6 +108,7 @@ impl<U: UpdatePort> UpdateActor<U> {
         }
 
         self.cleanup();
+        UPDATE_IN_PROGRESS.store(false, Ordering::Release);
     }
 }
 
