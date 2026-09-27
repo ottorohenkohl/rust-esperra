@@ -206,7 +206,7 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
             }
         }
 
-        candidate.next().is_none() && current.next().is_none()
+        false
     }
 }
 

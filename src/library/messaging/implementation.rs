@@ -1,5 +1,6 @@
 use super::protocol::MessagingError;
 use super::task::messaging_task;
+use super::duplex::Duplex;
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
@@ -24,6 +25,7 @@ use embassy_futures::select::Either;
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::{Duration, Timer};
+use embedded_io_async::{Read, Write};
 use heapless::String;
 use mbedtls_rs::{Certificate, ClientSessionConfig, Session, SessionConfig};
 use rust_mqtt::Bytes;
@@ -31,6 +33,7 @@ use rust_mqtt::buffer::AllocBuffer;
 use rust_mqtt::client::event::Event;
 use rust_mqtt::client::options::{ConnectOptions, PublicationOptions, SubscriptionOptions, TopicReference};
 use rust_mqtt::client::Client;
+use rust_mqtt::io::Transport;
 use rust_mqtt::types::{MqttBinary, MqttString, TopicFilter, TopicName};
 use serde::Deserialize;
 
@@ -47,7 +50,16 @@ const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 const TOPIC_CAPACITY: usize = 96;
 const UPDATE_STATE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-type MqttClient<'a> = Client<'a, Session<'a, TcpSocket<'a>>, AllocBuffer, 5, 1, 1, 0>;
+impl<R: Read, W: Write<Error = R::Error>> mbedtls_rs::Split for Duplex<R, W> {
+    type Read<'a> = &'a mut R where Self: 'a;
+    type Write<'a> = &'a mut W where Self: 'a;
+
+    fn split(&mut self) -> (Self::Read<'_>, Self::Write<'_>) {
+        Duplex::split(self)
+    }
+}
+
+type MqttClient<'a, N> = Client<'a, N, AllocBuffer, 5, 1, 1, 0>;
 
 enum ServeOutcome {
     UpdateRequested,
@@ -138,9 +150,14 @@ impl MqttMessagingImpl {
         let client_session_config = ClientSessionConfig { ca_chain: Some(ca_chain), server_name: Some(server_name), ..ClientSessionConfig::new() };
         let tls_config = SessionConfig::Client(client_session_config);
 
-        let mut tls = Session::new(self.network.tls.reference(), socket, &tls_config).map_err(|_| MessagingError::Tls)?;
+        let (tcp_reader, tcp_writer) = socket.split();
+        let mut tls = Session::new(self.network.tls.reference(), Duplex::new(tcp_reader, tcp_writer), &tls_config).map_err(|_| MessagingError::Tls)?;
 
         with_timeout(NETWORK_OPERATION_TIMEOUT, tls.connect()).await.map_err(|_| MessagingError::Tls)?.map_err(|_| MessagingError::Tls)?;
+
+        // The split read half is cancel-safe; the owning session remains alive
+        // until this connection returns (and is dropped before HTTPS OTA).
+        let (tls_reader, tls_writer) = tls.split().await.map_err(|_| MessagingError::Tls)?;
 
         let mut buffer = AllocBuffer;
         let mut client = MqttClient::new(&mut buffer);
@@ -149,7 +166,7 @@ impl MqttMessagingImpl {
         options = options.user_name(MqttString::from_str(info.mqtt_username.as_str()).map_err(|_| MessagingError::Config)?);
         options = options.password(MqttBinary::from_slice(info.mqtt_password.as_bytes()).map_err(|_| MessagingError::Config)?);
 
-        with_timeout(NETWORK_OPERATION_TIMEOUT, client.connect(tls, &options, Some(MqttString::from_str(info.mqtt_client_id.as_str()).map_err(|_| MessagingError::Config)?))).await.map_err(|_| MessagingError::Mqtt)?.map_err(|_| MessagingError::Mqtt)?;
+        with_timeout(NETWORK_OPERATION_TIMEOUT, client.connect(Duplex::new(tls_reader, tls_writer), &options, Some(MqttString::from_str(info.mqtt_client_id.as_str()).map_err(|_| MessagingError::Config)?))).await.map_err(|_| MessagingError::Mqtt)?.map_err(|_| MessagingError::Mqtt)?;
 
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/boiler").await?;
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/brew").await?;
@@ -158,10 +175,13 @@ impl MqttMessagingImpl {
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/energy").await?;
 
         loop {
-            match select(logging::receive_log(), client.poll()).await {
-                Either::First(message) => self.publish_log(&mut client, info.mqtt_topic_prefix.as_str(), message).await?,
-                Either::Second(event) => {
-                    if let Event::Publish(publish) = event.map_err(|_| MessagingError::Mqtt)? {
+            match select(client.poll_header(), logging::receive_log()).await {
+                Either::Second(message) => self.publish_log(&mut client, info.mqtt_topic_prefix.as_str(), message).await?,
+                Either::First(header) => {
+                    // Finish the body without competing logs. On timeout, leave
+                    // the entire connection rather than reuse a partial packet.
+                    let event = with_timeout(NETWORK_OPERATION_TIMEOUT, client.poll_body(header.map_err(|_| MessagingError::Mqtt)?)).await.map_err(|_| MessagingError::Mqtt)?.map_err(|_| MessagingError::Mqtt)?;
+                    if let Event::Publish(publish) = event {
                         let topic = publish.topic.as_ref().as_ref();
                         let payload = publish.message.as_ref();
 
@@ -176,7 +196,7 @@ impl MqttMessagingImpl {
         }
     }
 
-    async fn publish_log(&self, client: &mut MqttClient<'_>, topic_prefix: &str, message: LoggedMessage) -> Result<(), MessagingError> {
+    async fn publish_log<N: Transport>(&self, client: &mut MqttClient<'_, N>, topic_prefix: &str, message: LoggedMessage) -> Result<(), MessagingError> {
         let mut suffix: String<TOPIC_CAPACITY> = String::new();
 
         suffix.push_str("/out/").map_err(|_| MessagingError::Config)?;
@@ -193,7 +213,7 @@ impl MqttMessagingImpl {
         Ok(())
     }
 
-    async fn subscribe(&self, client: &mut MqttClient<'_>, topic_prefix: &str, suffix: &str) -> Result<(), MessagingError> {
+    async fn subscribe<N: Transport>(&self, client: &mut MqttClient<'_, N>, topic_prefix: &str, suffix: &str) -> Result<(), MessagingError> {
         let topic = Self::topic(topic_prefix, suffix).map_err(|_| MessagingError::Config)?;
 
         client.subscribe(TopicFilter::new(MqttString::from_str(topic.as_str()).map_err(|_| MessagingError::Config)?).ok_or(MessagingError::Config)?, SubscriptionOptions::new()).await.map_err(|_| MessagingError::Mqtt)?;
