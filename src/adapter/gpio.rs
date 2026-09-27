@@ -30,9 +30,12 @@ impl OutputPort for EspOutputAdapter<'_> {
         }
     }
 
+    async fn invert_state(&mut self) -> bool {
+        let active = self.pin.is_set_low();
 
-    async fn invert_state(&mut self) {
-        self.set_active(self.pin.is_set_low()).await;
+        self.set_active(active).await;
+
+        active
     }
 }
 
@@ -56,11 +59,11 @@ impl InputPort for EspInputAdapter<'_> {
 
 pub struct Ds18b20TemperatureAdapter<'d> {
     bus: OneWire<Flex<'d>>,
-    sensor: DS18B20,
+    sensor: Option<DS18B20>,
 }
 
 impl<'d> Ds18b20TemperatureAdapter<'d> {
-    pub fn new(pin: impl Pin + 'd) -> Result<Self, TemperatureSensorError> {
+    pub fn new(pin: impl Pin + 'd) -> Self {
         let mut pin = Flex::new(pin);
 
         pin.apply_output_config(&OutputConfig::default().with_drive_mode(DriveMode::OpenDrain));
@@ -69,25 +72,34 @@ impl<'d> Ds18b20TemperatureAdapter<'d> {
         pin.set_high();
 
         let mut bus = OneWire::new(pin, false);
-        let mut delay = Delay::new();
+        let sensor = Self::discover(&mut bus).ok();
 
+        Self { bus, sensor }
+    }
+
+
+    fn discover(bus: &mut OneWire<Flex<'d>>) -> Result<DS18B20, TemperatureSensorError> {
+        let mut delay = Delay::new();
         let device = bus.search_next(&mut DeviceSearch::new_for_family(0x28), &mut delay).map_err(|_| TemperatureSensorError::DiscoveryFailed)?.ok_or(TemperatureSensorError::NotFound)?;
 
-        let sensor = DS18B20::new(device).map_err(|_| TemperatureSensorError::InitializationFailed)?;
-
-        Ok(Self { bus, sensor })
+        DS18B20::new(device).map_err(|_| TemperatureSensorError::InitializationFailed)
     }
 }
 
 impl TemperatureSensorPort for Ds18b20TemperatureAdapter<'_> {
     async fn read_temperature(&mut self) -> Result<f64, TemperatureSensorError> {
+        if self.sensor.is_none() {
+            self.sensor = Some(Self::discover(&mut self.bus)?);
+        }
+
+        let sensor = self.sensor.as_ref().unwrap();
         let mut delay = Delay::new();
 
-        let resolution = self.sensor.measure_temperature(&mut self.bus, &mut delay).map_err(|_| TemperatureSensorError::MeasurementStartFailed)?;
+        let resolution = sensor.measure_temperature(&mut self.bus, &mut delay).map_err(|_| TemperatureSensorError::MeasurementStartFailed)?;
 
         Timer::after(Duration::from_millis(resolution.time_ms() as u64)).await;
 
-        let raw_temperature = self.sensor.read_temperature(&mut self.bus, &mut delay).map_err(|_| TemperatureSensorError::MeasurementReadFailed)?;
+        let raw_temperature = sensor.read_temperature(&mut self.bus, &mut delay).map_err(|_| TemperatureSensorError::MeasurementReadFailed)?;
 
         Ok(raw_temperature as i16 as f64 / 16.0)
     }

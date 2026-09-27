@@ -3,6 +3,8 @@ use super::model::Envelope;
 pub trait Actor {
     type Message;
 
+    fn name(&self) -> &'static str;
+
     async fn handle(&mut self, message: Self::Message);
 }
 

@@ -1,4 +1,5 @@
 use crate::domain::logging::port::LoggingPort;
+use crate::library::actor::interface::Actor;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -25,8 +26,14 @@ impl MqttLoggingAdapter {
 }
 
 impl LoggingPort for MqttLoggingAdapter {
-    fn log<Message>(&self, public_name: &str, message: &Message) where Message: Serialize {
-        let Ok(public_name) = String::try_from(public_name) else { return };
+    fn log<A, Message>(&self, actor: &A, subtopic: Option<&str>, message: &Message) where A: Actor, Message: Serialize {
+        let Ok(mut public_name) = String::try_from(actor.name()) else { return };
+
+        if let Some(subtopic) = subtopic {
+            if public_name.push('/').is_err() || public_name.push_str(subtopic).is_err() {
+                return;
+            }
+        }
 
         let mut buffer = [0; LOG_MESSAGE_CAPACITY];
 

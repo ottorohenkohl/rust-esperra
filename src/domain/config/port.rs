@@ -7,13 +7,15 @@ pub enum ConfigError {
     StorageWriteFailed,
 }
 
-pub trait ConfigPort {
+pub trait ReadConfigPort {
     fn read_heater_options(&self) -> HeaterOptions;
     fn read_temperature_options(&self) -> TemperatureOptions;
     fn read_pid_gains(&self) -> PidGains;
     fn read_firmware_info(&self) -> FirmwareInfo;
     fn read_network_info(&self) -> NetworkInfo;
+}
 
+pub trait WriteConfigPort {
     async fn write_heater_options(&self, options: HeaterOptions);
     async fn write_temperature_options(&self, options: TemperatureOptions);
     async fn write_pid_gains(&self, gains: PidGains);

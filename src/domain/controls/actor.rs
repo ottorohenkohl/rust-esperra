@@ -17,6 +17,7 @@ const MAINTENANCE_GESTURE_MIN: Duration = Duration::from_secs(8);
 const MAINTENANCE_GESTURE_MAX: Duration = Duration::from_secs(12);
 
 pub struct ButtonActor<P, S> {
+    public_name: &'static str,
     actor_ref: ActorRef<ButtonMessage>,
     brew_actor: ActorRef<BrewMessage>,
     power_input_port: P,
@@ -24,15 +25,17 @@ pub struct ButtonActor<P, S> {
     update_actor: ActorRef<UpdateMessage>,
     energy_actor: ActorRef<EnergyMessage>,
     machine_powered: Option<bool>,
+    status_active: Option<bool>,
     power_off_since: Option<Instant>,
 }
 
 impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
-    pub fn new(actor_ref: ActorRef<ButtonMessage>, brew_actor: ActorRef<BrewMessage>, power_input_port: P, status_input_port: S, update_actor: ActorRef<UpdateMessage>, energy_actor: ActorRef<EnergyMessage>) -> Self {
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<ButtonMessage>, brew_actor: ActorRef<BrewMessage>, power_input_port: P, status_input_port: S, update_actor: ActorRef<UpdateMessage>, energy_actor: ActorRef<EnergyMessage>) -> Self {
         let machine_powered = None;
+        let status_active = None;
         let power_off_since = None;
 
-        Self { actor_ref, brew_actor, power_input_port, status_input_port, update_actor, energy_actor, machine_powered, power_off_since }
+        Self { public_name, actor_ref, brew_actor, power_input_port, status_input_port, update_actor, energy_actor, machine_powered, status_active, power_off_since }
     }
 
     fn reached_update_interval(&mut self) -> bool {
@@ -41,7 +44,7 @@ impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
         matches!(off_duration, Some(duration) if duration >= MAINTENANCE_GESTURE_MIN && duration <= MAINTENANCE_GESTURE_MAX)
     }
 
-    fn handle_power_input(&mut self) {
+    async fn handle_power_input(&mut self) {
         let powered = self.power_input_port.powered_state();
         let previous = self.machine_powered.replace(powered);
 
@@ -53,7 +56,10 @@ impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
             }
             (Some(false), true) | (None, true) => {
                 if self.reached_update_interval() {
-                    return self.update_actor.tell(Some(&self.actor_ref), UpdateMessage::Start);
+                    self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(true));
+                    self.update_actor.tell(Some(&self.actor_ref), UpdateMessage::Start);
+
+                    return;
                 }
 
                 self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(true));
@@ -62,24 +68,34 @@ impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
         }
     }
 
-    fn handle_status_input(&self) {
+    fn handle_status_input(&mut self) {
         let active = self.status_input_port.powered_state();
+        let previous = self.status_active.replace(active);
 
-        if active {
-            self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(true));
+        match (previous, active) {
+            (Some(true), false) | (None, false) => {
+                self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
+            }
+            (Some(false), true) | (None, true) => {
+                self.energy_actor.tell(Some(&self.actor_ref), EnergyMessage::SetActive(true));
+                self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(true));
+            }
+            _ => {}
         }
-
-        self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(active));
     }
 }
 
 impl<P, S> Actor for ButtonActor<P, S> where P: InputPort, S: InputPort {
     type Message = ButtonMessage;
 
+    fn name(&self) -> &'static str {
+        self.public_name
+    }
+
     async fn handle(&mut self, message: Self::Message) {
         match message {
             ButtonMessage::HandleInputStates => {
-                self.handle_power_input();
+                self.handle_power_input().await;
                 self.handle_status_input();
             }
         }
@@ -92,18 +108,19 @@ pub struct WaterActor<W, L> {
     brew_actor: ActorRef<BrewMessage>,
     power_light_actor: ActorRef<LightMessage>,
     water_input_port: W,
+    public_name: &'static str,
     logging_port: Arc<L>,
 }
 
 impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
-    pub fn new(actor_ref: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, water_input_port: W, logging_port: Arc<L>) -> Self {
-        Self { actor_ref, boiler_actor, brew_actor, power_light_actor, water_input_port, logging_port }
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, water_input_port: W, logging_port: Arc<L>) -> Self {
+        Self { actor_ref, boiler_actor, brew_actor, power_light_actor, water_input_port, public_name, logging_port }
     }
 
     fn handle_water_input(&self) {
         let enough_water = self.water_input_port.powered_state();
 
-        self.logging_port.log("water", &WaterResponse::EnoughWater(enough_water));
+        self.logging_port.log(self, None, &WaterResponse::EnoughWater(enough_water));
 
         if enough_water {
             self.boiler_actor.unlock(&self.actor_ref);
@@ -125,6 +142,10 @@ impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
 
 impl<W, L> Actor for WaterActor<W, L> where W: InputPort, L: LoggingPort {
     type Message = WaterMessage;
+
+    fn name(&self) -> &'static str {
+        self.public_name
+    }
 
     async fn handle(&mut self, message: Self::Message) {
         match message {

@@ -1,5 +1,5 @@
 # will have compiled files and executables
-debug/
+/debug/
 target/
 
 # Editor configuration

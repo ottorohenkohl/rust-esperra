@@ -30,7 +30,7 @@ use esp_hal::peripherals::{ADC1, LPWR, RNG, WIFI};
 
 pub const ROOT_CA: &[u8] = concat!(include_str!("../../../res/isrg-root-x1.pem"), "\0").as_bytes();
 
-static NETWORK_STACK_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
+static NETWORK_STACK_RESOURCES: StaticCell<StackResources<6>> = StaticCell::new();
 static RTC: StaticCell<Rtc<'static>> = StaticCell::new();
 static TRNG_SOURCE: StaticCell<esp_hal::rng::TrngSource<'static>> = StaticCell::new();
 static TRNG: StaticCell<esp_hal::rng::Trng> = StaticCell::new();
@@ -89,7 +89,7 @@ impl NetworkStackImpl {
 
         let result = get_time(server, &socket, context).await.map_err(|_| NetworkError::Time)?;
 
-        self.rtc.set_current_time_us(result.sec() as u64 * 1_000_000 + (result.sec_fraction() as u64 * 1_000_000) >> 32);
+        self.rtc.set_current_time_us(result.sec() as u64 * 1_000_000 + ((result.sec_fraction() as u64 * 1_000_000) >> 32));
 
         Ok(())
     }

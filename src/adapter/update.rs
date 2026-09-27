@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ConfigPort, FirmwareInfo};
+use crate::domain::config::port::{FirmwareInfo, ReadConfigPort, WriteConfigPort};
 use crate::domain::update::port::{UpdateConfirmation, UpdateError, UpdatePort};
 use crate::library::network::implementation::NetworkStackImpl;
 
@@ -23,6 +23,7 @@ use reqwless::{Certificate, TlsVersion};
 use static_cell::StaticCell;
 
 use core::str::from_utf8;
+use embassy_time::{Duration, with_timeout};
 use esp_hal::system::software_reset;
 
 use esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN;
@@ -31,6 +32,7 @@ use reqwless::X509;
 const UPDATE_HEADERS: [(&str, &str); 1] = [("Connection", "close")];
 const IMAGE_HEADER_SIZE: usize = 80;
 const FIRMWARE_BUFFER_SIZE: usize = 4096;
+const NETWORK_OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 static TCP_STATE: StaticCell<TcpClientState<1, 4096, 4096>> = StaticCell::new();
 
@@ -43,7 +45,7 @@ pub struct EspUpdateAdapter<C> {
     config: Arc<C>,
 }
 
-impl<C> EspUpdateAdapter<C> where C: ConfigPort {
+impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     pub fn initialize(flash: &mut FlashStorage<'_>) -> Result<(), UpdateError> {
         OtaUpdater::new(flash, &mut [0; PARTITION_TABLE_MAX_LEN]).map_err(|_| UpdateError::InvalidPartitionTable)?;
 
@@ -52,6 +54,18 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
 
     pub fn new(network: &'static NetworkStackImpl, flash: SharedFlash, config: Arc<C>) -> Self {
         Self { network, flash, config }
+    }
+
+    async fn persist_current_version(&self) -> Result<(), UpdateError> {
+        let version = String::try_from(env!("CARGO_PKG_VERSION")).map_err(|_| UpdateError::InvalidImage)?;
+
+        let mut firmware_info = self.config.read_firmware_info();
+
+        firmware_info.version = version;
+
+        self.config.write_firmware_info(firmware_info).await;
+
+        Ok(())
     }
 
     async fn check_and_install(&mut self) -> Result<bool, UpdateError> {
@@ -74,14 +88,13 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
             Self::install_firmware(&mut client, &mut flash, firmware_url.as_str()).await?;
 
             return Ok(true)
-
         }
 
         Ok(false)
     }
 
     async fn fetch_latest_version(client: &mut FirmwareHttpClient<'_>, firmware_url: &str) -> Result<String<32>, UpdateError> {
-        let mut response_buffer = [0; 256];
+        let mut response_buffer = [0; FIRMWARE_BUFFER_SIZE];
         let request = client.request(Method::GET, firmware_url).await.map_err(|_| UpdateError::Http)?;
         let mut request = request.headers(&UPDATE_HEADERS);
         let response = request.send(&mut response_buffer).await.map_err(|_| UpdateError::Http)?;
@@ -150,9 +163,15 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
     }
 
     fn latest_firmware_url(firmware_info: &FirmwareInfo) -> Result<String<256>, UpdateError> {
+        const LATEST_FIRMWARE_PATH: &str = "/latest/firmware-ota.bin";
+
+        if firmware_info.url.ends_with(LATEST_FIRMWARE_PATH) {
+            return Ok(firmware_info.url.clone());
+        }
+
         let mut url = String::new();
 
-        write!(&mut url, "{}/latest/firmware-ota.bin", firmware_info.url.trim_end_matches('/')).map_err(|_| UpdateError::Http)?;
+        write!(&mut url, "{}{}", firmware_info.url.trim_end_matches('/'), LATEST_FIRMWARE_PATH).map_err(|_| UpdateError::Http)?;
 
         Ok(url)
     }
@@ -187,14 +206,14 @@ impl<C> EspUpdateAdapter<C> where C: ConfigPort {
             }
         }
 
-        candidate.next().is_none() && current.next().is_none()
+        false
     }
 }
 
-impl<C> UpdatePort for EspUpdateAdapter<C> where C: ConfigPort {
+impl<C> UpdatePort for EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     async fn update(&mut self) -> Result<UpdateConfirmation, UpdateError> {
         self.network.stack.wait_config_up().await;
-        self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str()).await.map_err(|_| UpdateError::Time)?;
+        with_timeout(NETWORK_OPERATION_TIMEOUT, self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str())).await.map_err(|_| UpdateError::Time)?.map_err(|_| UpdateError::Time)?;
 
         if self.check_and_install().await? {
             software_reset();
@@ -212,6 +231,11 @@ impl<C> UpdatePort for EspUpdateAdapter<C> where C: ConfigPort {
 
         if matches!(updater.current_ota_state(), Ok(OtaImageState::New | OtaImageState::PendingVerify)) {
             updater.set_current_ota_state(OtaImageState::Valid).map_err(|_| UpdateError::Flash)?;
+
+            drop(updater);
+            drop(flash);
+
+            self.persist_current_version().await?;
 
             return Ok(UpdateConfirmation::Confirmed);
         }

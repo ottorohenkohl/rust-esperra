@@ -1,5 +1,5 @@
 use super::port::{OutputPort, TemperatureSensorPort};
-use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
+use super::protocol::{LightMessage, LightResponse, TemperatureSensorMessage, TemperatureSensorResponse};
 
 use crate::domain::clock::port::TimerPort;
 use crate::domain::logging::port::LoggingPort;
@@ -9,51 +9,65 @@ use crate::library::actor::model::Subscriber;
 use alloc::sync::Arc;
 use heapless::Vec;
 
-pub struct LightActor<P, T> {
+pub struct LightActor<P, T, L> {
     output_port: P,
     timer_port: T,
+    public_name: &'static str,
+    logging_port: Arc<L>,
 }
 
-impl<P, T> LightActor<P, T> {
-    pub fn new(output_port: P, timer_port: T) -> Self {
-        Self { output_port, timer_port }
+impl<P, T, L> LightActor<P, T, L> {
+    pub fn new(public_name: &'static str, output_port: P, timer_port: T, logging_port: Arc<L>) -> Self {
+        Self { output_port, timer_port, public_name, logging_port }
     }
 }
 
-impl<P, T> Actor for LightActor<P, T> where P: OutputPort, T: TimerPort {
+impl<P, T, L> Actor for LightActor<P, T, L> where P: OutputPort, T: TimerPort, L: LoggingPort {
     type Message = LightMessage;
+
+    fn name(&self) -> &'static str {
+        self.public_name
+    }
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
             LightMessage::SetActive(active) => {
-                let _ = self.output_port.set_active(active).await;
+                self.output_port.set_active(active).await;
+                self.logging_port.log(self, None, &LightResponse::Active(active));
             }
             LightMessage::BlinkTimes(times) => {
                 for _ in 0..(times * 2) {
-                    self.output_port.invert_state().await;
-                    self.timer_port.wait_for(200).await;
+                    let active = self.output_port.invert_state().await;
+
+                    self.logging_port.log(self, None, &LightResponse::Active(active));
+                    self.timer_port.wait_for(500).await;
                 }
 
-                self.timer_port.wait_for(800).await;
+                self.timer_port.wait_for(1000).await;
             }
         }
     }
 }
 
 pub struct TemperatureSensorActor<P, L> {
+    public_name: &'static str,
     temperature_port: P,
     logging_port: Arc<L>,
     subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>,
 }
 
 impl<P, L> TemperatureSensorActor<P, L> {
-    pub fn new(temperature_port: P, logging_port: Arc<L>, subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>) -> Self {
-        Self { temperature_port, logging_port, subscribers }
+    pub fn new(public_name: &'static str, temperature_port: P, logging_port: Arc<L>, subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>) -> Self {
+        Self { public_name, temperature_port, logging_port, subscribers }
     }
 }
 
 impl<P, L> Actor for TemperatureSensorActor<P, L> where P: TemperatureSensorPort, L: LoggingPort {
     type Message = TemperatureSensorMessage;
+
+    fn name(&self) -> &'static str {
+        self.public_name
+    }
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
@@ -62,7 +76,7 @@ impl<P, L> Actor for TemperatureSensorActor<P, L> where P: TemperatureSensorPort
                     Ok(temperature) => {
                         let message = TemperatureSensorResponse::Measured(temperature);
 
-                        self.logging_port.log("temperature", &message);
+                        self.logging_port.log(self, None, &message);
 
                         message
                     },

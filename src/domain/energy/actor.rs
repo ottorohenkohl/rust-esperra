@@ -13,6 +13,7 @@ use embassy_time::{Duration, Instant};
 const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 
 pub struct EnergyActor<L> {
+    public_name: &'static str,
     actor_ref: ActorRef<EnergyMessage>,
     boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
@@ -23,10 +24,11 @@ pub struct EnergyActor<L> {
 }
 
 impl<L> EnergyActor<L> where L: LoggingPort {
-    pub fn new(actor_ref: ActorRef<EnergyMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>, logging_port: Arc<L>) -> Self {
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<EnergyMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>, logging_port: Arc<L>) -> Self {
         let last_activity = Some(Instant::now());
 
         Self {
+            public_name,
             actor_ref,
             boiler_actor,
             brew_actor,
@@ -67,12 +69,16 @@ impl<L> EnergyActor<L> where L: LoggingPort {
     }
 
     fn log_active_state(&self) {
-        self.logging_port.log("energy", &EnergyResponse::Active(self.last_activity.is_some()));
+        self.logging_port.log(self, None, &EnergyResponse::Active(self.last_activity.is_some()));
     }
 }
 
 impl<L> Actor for EnergyActor<L> where L: LoggingPort {
     type Message = EnergyMessage;
+
+    fn name(&self) -> &'static str {
+        self.public_name
+    }
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
