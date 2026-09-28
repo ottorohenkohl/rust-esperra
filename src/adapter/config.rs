@@ -3,7 +3,6 @@ use crate::domain::config::port::{ConfigError, ReadConfigPort, WriteConfigPort, 
 use alloc::sync::Arc;
 use core::cell::RefCell;
 use core::fmt::Write;
-use core::str::from_utf8;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embedded_storage::{ReadStorage, Storage};
@@ -12,6 +11,8 @@ use esp_storage::FlashStorage;
 use heapless::String;
 
 use critical_section::Mutex as CriticalSectionMutex;
+
+use core::str::from_utf8;
 
 const CONFIG_STORAGE_OFFSET: u32 = 0x9000;
 const MAGIC_RECORD: u16 = 2307;
@@ -54,7 +55,7 @@ impl ConfigState {
         FlashConfigAdapter::write_f64(&mut record, 830, self.weight_options.double_shot_weight);
         FlashConfigAdapter::write_f64(&mut record, 838, self.weight_options.espresso_cup_weight);
         FlashConfigAdapter::write_f64(&mut record, 846, self.weight_options.capuccino_cup_weight);
-        record[854] = u8::from(self.weight_options.automatic_weight_brew_start);
+        FlashConfigAdapter::write_bool(&mut record, 854, self.weight_options.automatic_weight_brew_start);
 
         record
     }
@@ -68,7 +69,6 @@ pub struct FlashConfigAdapter {
 impl FlashConfigAdapter {
     pub async fn new(flash: SharedFlash) -> Result<Self, ConfigError> {
         let mut record = [0; RECORD_SIZE];
-
         let mut storage = flash.lock().await;
 
         storage.read(CONFIG_STORAGE_OFFSET, &mut record).map_err(|_| ConfigError::StorageReadFailed)?;
@@ -107,7 +107,7 @@ impl FlashConfigAdapter {
                     double_shot_weight: Self::read_f64(&record, 830),
                     espresso_cup_weight: Self::read_f64(&record, 838),
                     capuccino_cup_weight: Self::read_f64(&record, 846),
-                    automatic_weight_brew_start: record[854] != 0,
+                    automatic_weight_brew_start: Self::read_bool(&record, 854),
                 },
             }
         } else {
@@ -134,8 +134,12 @@ impl FlashConfigAdapter {
 
     async fn persist(&self, record: [u8; RECORD_SIZE]) {
         let mut storage = self.flash.lock().await;
-
+        
         let _ = storage.write(CONFIG_STORAGE_OFFSET, &record);
+    }
+
+    fn read_bool(record: &[u8; RECORD_SIZE], offset: usize) -> bool {
+        record[offset] != 0
     }
 
     fn read_u16(record: &[u8; RECORD_SIZE], offset: usize) -> u16 {
@@ -155,6 +159,10 @@ impl FlashConfigAdapter {
         let length = bytes.iter().position(|byte| *byte == 0 || *byte == 0xff).unwrap_or(bytes.len());
 
         from_utf8(&bytes[..length]).ok().and_then(|value| String::try_from(value).ok()).unwrap_or_default()
+    }
+
+    fn write_bool(record: &mut [u8; RECORD_SIZE], offset: usize, value: bool) {
+        record[offset] = u8::from(value);
     }
 
     fn write_u16(record: &mut [u8; RECORD_SIZE], offset: usize, value: u16) {

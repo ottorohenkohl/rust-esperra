@@ -15,6 +15,5 @@ pub enum UpdateError {
 
 pub trait UpdatePort {
     async fn update(&mut self) -> Result<UpdateConfirmation, UpdateError>;
-
     async fn confirm(&mut self) -> Result<UpdateConfirmation, UpdateError>;
 }

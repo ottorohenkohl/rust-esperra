@@ -8,6 +8,7 @@ use alloc::sync::Arc;
 
 pub struct ConfigActor<C, L> {
     public_name: &'static str,
+
     config_port: Arc<C>,
     logging_port: Arc<L>,
 }
@@ -18,11 +19,7 @@ impl<C, L> ConfigActor<C, L> {
     }
 }
 
-impl<C, L> Actor for ConfigActor<C, L>
-where
-    C: ReadConfigPort + WriteConfigPort,
-    L: LoggingPort,
-{
+impl<C, L> Actor for ConfigActor<C, L> where C: ReadConfigPort + WriteConfigPort, L: LoggingPort {
     type Message = ConfigMessage;
 
     fn name(&self) -> &'static str {
@@ -36,12 +33,14 @@ where
             ConfigMessage::UpdatePidGains(gains) => self.config_port.write_pid_gains(gains).await,
             ConfigMessage::UpdateFirmwareInfo(info) => self.config_port.write_firmware_info(info).await,
             ConfigMessage::UpdateNetworkInfo(info) => self.config_port.write_network_info(info).await,
+            ConfigMessage::UpdateWeightOptions(options) => self.config_port.write_weight_options(options).await,
 
             ConfigMessage::LogHeaterOptions => self.logging_port.log(self, Some("heater_options"), &ConfigResponse::HeaterOptions(self.config_port.read_heater_options())),
             ConfigMessage::LogTemperatureOptions => self.logging_port.log(self, Some("temperature_options"), &ConfigResponse::TemperatureOptions(self.config_port.read_temperature_options())),
             ConfigMessage::LogPidGains => self.logging_port.log(self, Some("pid_gains"), &ConfigResponse::PidGains(self.config_port.read_pid_gains())),
             ConfigMessage::LogFirmwareInfo => self.logging_port.log(self, Some("firmware_info"), &ConfigResponse::FirmwareInfo(self.config_port.read_firmware_info())),
             ConfigMessage::LogNetworkInfo => self.logging_port.log(self, Some("network_info"), &ConfigResponse::NetworkInfo(self.config_port.read_network_info())),
+            ConfigMessage::LogWeightOptions => self.logging_port.log(self, Some("weight_options"), &ConfigResponse::WeightOptions(self.config_port.read_weight_options())),
         }
     }
 }

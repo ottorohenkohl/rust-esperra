@@ -9,8 +9,10 @@ use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
 
 use core::sync::atomic::{AtomicBool, Ordering};
-use embassy_futures::select::{Either, select};
+use embassy_futures::select::{Either};
 use embassy_time::{Duration, Timer};
+
+use embassy_futures::select::select;
 
 const SAFE_SHUTDOWN_DELAY: Duration = Duration::from_secs(2);
 const UPDATE_INDICATOR_INTERVAL: Duration = Duration::from_millis(500);
@@ -23,6 +25,7 @@ pub fn update_in_progress() -> bool {
 
 pub struct UpdateActor<U: UpdatePort> {
     public_name: &'static str,
+
     actor_ref: ActorRef<UpdateMessage>,
     update_port: U,
     button_actor: ActorRef<ButtonMessage>,

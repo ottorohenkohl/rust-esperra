@@ -1,6 +1,4 @@
-use crate::domain::gpio::port::InputPort;
-use crate::domain::gpio::port::OutputPort;
-use crate::domain::gpio::port::{TemperatureSensorError, TemperatureSensorPort};
+use crate::domain::gpio::port::{InputPort, OutputPort, TemperatureSensorError, TemperatureSensorPort};
 
 use embassy_time::{Duration, Timer};
 use esp_hal::delay::Delay;
@@ -80,6 +78,7 @@ impl<'d> Ds18b20TemperatureAdapter<'d> {
 
     fn discover(bus: &mut OneWire<Flex<'d>>) -> Result<DS18B20, TemperatureSensorError> {
         let mut delay = Delay::new();
+
         let device = bus.search_next(&mut DeviceSearch::new_for_family(0x28), &mut delay).map_err(|_| TemperatureSensorError::DiscoveryFailed)?.ok_or(TemperatureSensorError::NotFound)?;
 
         DS18B20::new(device).map_err(|_| TemperatureSensorError::InitializationFailed)
@@ -88,12 +87,13 @@ impl<'d> Ds18b20TemperatureAdapter<'d> {
 
 impl TemperatureSensorPort for Ds18b20TemperatureAdapter<'_> {
     async fn read_temperature(&mut self) -> Result<f64, TemperatureSensorError> {
+        let mut delay = Delay::new();
+
         if self.sensor.is_none() {
             self.sensor = Some(Self::discover(&mut self.bus)?);
         }
 
         let sensor = self.sensor.as_ref().unwrap();
-        let mut delay = Delay::new();
 
         let resolution = sensor.measure_temperature(&mut self.bus, &mut delay).map_err(|_| TemperatureSensorError::MeasurementStartFailed)?;
 

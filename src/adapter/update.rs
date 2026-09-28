@@ -11,6 +11,7 @@ use embassy_sync::mutex::Mutex;
 use core::fmt::Write;
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
+use embassy_time::Duration;
 use embedded_io_async::Read;
 use embedded_storage::Storage;
 use esp_bootloader_esp_idf::ota::OtaImageState;
@@ -23,15 +24,19 @@ use reqwless::{Certificate, TlsVersion};
 use static_cell::StaticCell;
 
 use core::str::from_utf8;
-use embassy_time::{Duration, with_timeout};
+use embassy_time::with_timeout;
 use esp_hal::system::software_reset;
 
 use esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN;
 use reqwless::X509;
 
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const LATEST_FIRMWARE_PATH: &str = "/latest/firmware-ota.bin";
 const UPDATE_HEADERS: [(&str, &str); 1] = [("Connection", "close")];
+
 const IMAGE_HEADER_SIZE: usize = 80;
 const FIRMWARE_BUFFER_SIZE: usize = 4096;
+
 const NETWORK_OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 static TCP_STATE: StaticCell<TcpClientState<1, 4096, 4096>> = StaticCell::new();
@@ -41,6 +46,7 @@ type SharedFlash = Arc<Mutex<CriticalSectionRawMutex, FlashStorage<'static>>>;
 
 pub struct EspUpdateAdapter<C> {
     network: &'static NetworkStackImpl,
+
     flash: SharedFlash,
     config: Arc<C>,
 }
@@ -57,7 +63,7 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     }
 
     async fn persist_current_version(&self) -> Result<(), UpdateError> {
-        let version = String::try_from(env!("CARGO_PKG_VERSION")).map_err(|_| UpdateError::InvalidImage)?;
+        let version = String::try_from(CURRENT_VERSION).map_err(|_| UpdateError::InvalidImage)?;
 
         let mut firmware_info = self.config.read_firmware_info();
 
@@ -144,6 +150,7 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
                 }
 
                 partition.write(offset as u32, &chunk[..read]).map_err(|_| UpdateError::Flash)?;
+
                 offset += read;
             }
 
@@ -163,8 +170,6 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     }
 
     fn latest_firmware_url(firmware_info: &FirmwareInfo) -> Result<String<256>, UpdateError> {
-        const LATEST_FIRMWARE_PATH: &str = "/latest/firmware-ota.bin";
-
         if firmware_info.url.ends_with(LATEST_FIRMWARE_PATH) {
             return Ok(firmware_info.url.clone());
         }
@@ -201,8 +206,9 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
             match candidate.parse::<u32>().ok().zip(current.parse::<u32>().ok()) {
                 Some((candidate, current)) if candidate > current => return true,
                 Some((candidate, current)) if candidate < current => return false,
-                Some(_) => {}
                 None => return false,
+
+                Some(_) => {}
             }
         }
 
@@ -213,6 +219,7 @@ impl<C> EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
 impl<C> UpdatePort for EspUpdateAdapter<C> where C: ReadConfigPort + WriteConfigPort {
     async fn update(&mut self) -> Result<UpdateConfirmation, UpdateError> {
         self.network.stack.wait_config_up().await;
+
         with_timeout(NETWORK_OPERATION_TIMEOUT, self.network.synchronize_time(self.config.read_network_info().ntp_server.as_str())).await.map_err(|_| UpdateError::Time)?.map_err(|_| UpdateError::Time)?;
 
         if self.check_and_install().await? {

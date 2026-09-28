@@ -1,4 +1,4 @@
-use super::port::{FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, TemperatureOptions};
+use super::port::{FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, TemperatureOptions, WeightOptions};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,11 +9,13 @@ pub enum ConfigMessage {
     UpdatePidGains(PidGains),
     UpdateFirmwareInfo(FirmwareInfo),
     UpdateNetworkInfo(NetworkInfo),
+    UpdateWeightOptions(WeightOptions),
     LogHeaterOptions,
     LogTemperatureOptions,
     LogPidGains,
     LogFirmwareInfo,
     LogNetworkInfo,
+    LogWeightOptions,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -23,4 +25,5 @@ pub enum ConfigResponse {
     PidGains(PidGains),
     FirmwareInfo(FirmwareInfo),
     NetworkInfo(NetworkInfo),
+    WeightOptions(WeightOptions),
 }

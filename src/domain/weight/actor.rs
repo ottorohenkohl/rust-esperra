@@ -12,8 +12,8 @@ use alloc::sync::Arc;
 
 pub struct WeightActor<P, L, C> {
     public_name: &'static str,
-    weight_port: P,
 
+    weight_port: P,
     logging_port: Arc<L>,
     energy_actor: ActorRef<EnergyMessage>,
     brew_actor: ActorRef<BrewMessage>,

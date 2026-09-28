@@ -12,6 +12,7 @@ use embassy_time::Instant;
 
 pub struct BoilerActor<C, H> {
     public_name: &'static str,
+    
     actor_ref: ActorRef<BoilerMessage>,
     config_port: Arc<C>,
     current_temperature: Option<f64>,

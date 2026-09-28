@@ -10,9 +10,10 @@ use alloc::sync::Arc;
 use heapless::Vec;
 
 pub struct LightActor<P, T, L> {
+    public_name: &'static str,
+
     output_port: P,
     timer_port: T,
-    public_name: &'static str,
     logging_port: Arc<L>,
 }
 
@@ -51,6 +52,7 @@ impl<P, T, L> Actor for LightActor<P, T, L> where P: OutputPort, T: TimerPort, L
 
 pub struct TemperatureSensorActor<P, L> {
     public_name: &'static str,
+
     temperature_port: P,
     logging_port: Arc<L>,
     subscribers: Vec<Subscriber<TemperatureSensorResponse, 8>, 8>,

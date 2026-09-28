@@ -7,24 +7,6 @@ pub enum ConfigError {
     StorageWriteFailed,
 }
 
-pub trait ReadConfigPort {
-    fn read_heater_options(&self) -> HeaterOptions;
-    fn read_temperature_options(&self) -> TemperatureOptions;
-    fn read_pid_gains(&self) -> PidGains;
-    fn read_firmware_info(&self) -> FirmwareInfo;
-    fn read_network_info(&self) -> NetworkInfo;
-    fn read_weight_options(&self) -> WeightOptions;
-}
-
-pub trait WriteConfigPort {
-    async fn write_heater_options(&self, options: HeaterOptions);
-    async fn write_temperature_options(&self, options: TemperatureOptions);
-    async fn write_pid_gains(&self, gains: PidGains);
-    async fn write_firmware_info(&self, info: FirmwareInfo);
-    async fn write_network_info(&self, info: NetworkInfo);
-    async fn write_weight_options(&self, options: WeightOptions);
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct HeaterOptions {
     pub heating_cycle_ms: u64,
@@ -69,4 +51,22 @@ pub struct NetworkInfo {
     pub mqtt_password: String<64>,
     pub mqtt_client_id: String<64>,
     pub mqtt_topic_prefix: String<64>,
+}
+
+pub trait ReadConfigPort {
+    fn read_heater_options(&self) -> HeaterOptions;
+    fn read_temperature_options(&self) -> TemperatureOptions;
+    fn read_pid_gains(&self) -> PidGains;
+    fn read_firmware_info(&self) -> FirmwareInfo;
+    fn read_network_info(&self) -> NetworkInfo;
+    fn read_weight_options(&self) -> WeightOptions;
+}
+
+pub trait WriteConfigPort {
+    async fn write_heater_options(&self, options: HeaterOptions);
+    async fn write_temperature_options(&self, options: TemperatureOptions);
+    async fn write_pid_gains(&self, gains: PidGains);
+    async fn write_firmware_info(&self, info: FirmwareInfo);
+    async fn write_network_info(&self, info: NetworkInfo);
+    async fn write_weight_options(&self, options: WeightOptions);
 }

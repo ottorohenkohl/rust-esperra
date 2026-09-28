@@ -14,6 +14,7 @@ const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 
 pub struct EnergyActor<L> {
     public_name: &'static str,
+
     actor_ref: ActorRef<EnergyMessage>,
     boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
@@ -27,16 +28,7 @@ impl<L> EnergyActor<L> where L: LoggingPort {
     pub fn new(public_name: &'static str, actor_ref: ActorRef<EnergyMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>, logging_port: Arc<L>) -> Self {
         let last_activity = Some(Instant::now());
 
-        Self {
-            public_name,
-            actor_ref,
-            boiler_actor,
-            brew_actor,
-            power_light_actor,
-            status_light_actor,
-            logging_port,
-            last_activity,
-        }
+        Self { public_name, actor_ref, boiler_actor, brew_actor, power_light_actor, status_light_actor, logging_port, last_activity }
     }
 
     fn set_active(&mut self, active: bool) {

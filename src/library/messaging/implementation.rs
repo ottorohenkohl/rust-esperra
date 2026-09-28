@@ -8,6 +8,7 @@ use crate::domain::config::port::ReadConfigPort;
 use crate::domain::config::protocol::ConfigMessage;
 use crate::domain::energy::protocol::EnergyMessage;
 use crate::domain::update::protocol::UpdateMessage;
+use crate::domain::weight::protocol::WeightMessage;
 use crate::library::actor::model::ActorRef;
 use crate::library::network::implementation::NetworkStackImpl;
 
@@ -102,17 +103,20 @@ enum ServeOutcome {
 
 pub struct MqttMessagingImpl {
     network: &'static NetworkStackImpl,
+
     config_port: Arc<dyn ReadConfigPort>,
+
     boiler: ActorRef<BoilerMessage>,
     brew: ActorRef<BrewMessage>,
     update: ActorRef<UpdateMessage>,
     config: ActorRef<ConfigMessage>,
     energy: ActorRef<EnergyMessage>,
+    weight: ActorRef<WeightMessage>,
 }
 
 impl MqttMessagingImpl {
-    pub fn new(network: &'static NetworkStackImpl, config_port: Arc<dyn ReadConfigPort>, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, config: ActorRef<ConfigMessage>, energy: ActorRef<EnergyMessage>, spawner: Spawner) {
-        let implementation = Self { network, config_port, boiler, brew, update, config, energy };
+    pub fn new(network: &'static NetworkStackImpl, config_port: Arc<dyn ReadConfigPort>, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, config: ActorRef<ConfigMessage>, energy: ActorRef<EnergyMessage>, weight: ActorRef<WeightMessage>, spawner: Spawner) {
+        let implementation = Self { network, config_port, boiler, brew, update, config, energy, weight };
 
         spawner.spawn(messaging_task(implementation).unwrap());
     }
@@ -199,6 +203,7 @@ impl MqttMessagingImpl {
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/update").await?;
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/config").await?;
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/energy").await?;
+        self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/weight").await?;
 
         loop {
             match select(client.poll_header(), logging::receive_log()).await {
@@ -226,7 +231,6 @@ impl MqttMessagingImpl {
         suffix.push_str(message.public_name.as_str()).map_err(|_| MessagingError::Config)?;
 
         let topic = Self::topic(topic_prefix, suffix.as_str())?;
-
         let topic = TopicName::new(MqttString::from_str(topic.as_str()).map_err(|_| MessagingError::Config)?).ok_or(MessagingError::Config)?;
         let options = PublicationOptions::new(TopicReference::Name(topic)).payload_format_indicator(true);
 
@@ -260,6 +264,7 @@ impl MqttMessagingImpl {
         let update_topic = Self::topic(topic_prefix, "/in/update").map_err(|_| MessagingError::Config)?;
         let config_topic = Self::topic(topic_prefix, "/in/config").map_err(|_| MessagingError::Config)?;
         let energy_topic = Self::topic(topic_prefix, "/in/energy").map_err(|_| MessagingError::Config)?;
+        let weight_topic = Self::topic(topic_prefix, "/in/weight").map_err(|_| MessagingError::Config)?;
 
         match topic {
             topic if topic == boiler_topic.as_str() => {
@@ -276,6 +281,9 @@ impl MqttMessagingImpl {
             }
             topic if topic == energy_topic.as_str() => {
                 self.dispatch(payload, &self.energy);
+            }
+            topic if topic == weight_topic.as_str() => {
+                self.dispatch(payload, &self.weight);
             }
 
             _ => {}

@@ -4,6 +4,7 @@ use crate::library::actor::interface::Actor;
 
 pub struct BrewActor<P, V> {
     public_name: &'static str,
+
     pump_output_port: P,
     valve_output_port: V,
 }

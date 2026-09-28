@@ -18,6 +18,7 @@ const MAINTENANCE_GESTURE_MAX: Duration = Duration::from_secs(12);
 
 pub struct ButtonActor<P, S> {
     public_name: &'static str,
+
     actor_ref: ActorRef<ButtonMessage>,
     brew_actor: ActorRef<BrewMessage>,
     power_input_port: P,

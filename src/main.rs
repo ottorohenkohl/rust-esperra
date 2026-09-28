@@ -28,6 +28,7 @@ use crate::domain::update::protocol::UpdateMessage;
 use crate::domain::weight::actor::WeightActor;
 use crate::domain::weight::protocol::WeightMessage;
 use crate::library::actor::implementation::EmbassyMailboxImpl;
+use crate::library::bluetooth::implementation::EspBluetooth;
 use crate::library::debug::implementation::DebugImpl;
 use crate::library::debug::protocol::Color;
 use crate::library::messaging::implementation::MqttMessagingImpl;
@@ -53,7 +54,8 @@ mod adapter;
 mod domain;
 mod library;
 
-const TICK_INTERVALL: Duration = Duration::from_millis(100);
+const FAST_TICK_INTERVAL: Duration = Duration::from_millis(100);
+const SLOW_TICK_INTERVAL: Duration = Duration::from_millis(1000);
 
 static BOILER_ACTOR_MAILBOX: EmbassyMailboxImpl<BoilerMessage, 8> = EmbassyMailboxImpl::new();
 static BREW_ACTOR_MAILBOX: EmbassyMailboxImpl<BrewMessage, 8> = EmbassyMailboxImpl::new();
@@ -73,7 +75,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
-    // Reuse bootloader RAM so the main stack has room for actor and radio initialization.
+
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 64 * 1024);
     esp_alloc::heap_allocator!(size: 96 * 1024);
 
@@ -101,8 +103,10 @@ async fn main(spawner: Spawner) {
 
     DebugImpl::set(Color::Magenta).await;
 
+    let bluetooth = EspBluetooth::initialize(peripherals.BT, spawner);
+
+    let weight_adapter = BookooWeightAdapter::new(bluetooth, spawner);
     let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO15);
-    let weight_adapter = BookooWeightAdapter::new(peripherals.BT, spawner);
 
     DebugImpl::set(Color::Yellow).await;
 
@@ -127,6 +131,7 @@ async fn main(spawner: Spawner) {
     let update_actor_ref = UPDATE_ACTOR_MAILBOX.actor_ref();
     let config_actor_ref = CONFIG_ACTOR_MAILBOX.actor_ref();
     let energy_actor_ref = ENERGY_ACTOR_MAILBOX.actor_ref();
+    let weight_actor_ref = WEIGHT_ACTOR_MAILBOX.actor_ref();
 
     let boiler_actor = BoilerActor::new("boiler", boiler_actor_ref.clone(), Arc::clone(&config_adapter), heating_output_adapter, status_light_actor_ref.clone());
     let brew_actor = BrewActor::new("brew", pump_output_adapter, valve_output_adapter);
@@ -144,23 +149,32 @@ async fn main(spawner: Spawner) {
 
     let mqtt_config_port: Arc<dyn ReadConfigPort> = config_adapter.clone();
 
-    MqttMessagingImpl::new(network, mqtt_config_port, boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone(), config_actor_ref, energy_actor_ref.clone(), spawner);
+    MqttMessagingImpl::new(network, mqtt_config_port, boiler_actor_ref.clone(), brew_actor_ref.clone(), update_actor_ref.clone(), config_actor_ref, energy_actor_ref.clone(), weight_actor_ref, spawner);
 
     DebugImpl::set(Color::Blue).await;
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), BUTTON_ACTOR_MAILBOX.run(button_actor));
     let actor_group_2 = join3(WATER_ACTOR_MAILBOX.run(water_actor), POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor));
     let actor_group_3 = join3(TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor), UPDATE_ACTOR_MAILBOX.run(update_actor), WEIGHT_ACTOR_MAILBOX.run(weight_actor));
-    let actor_group_4 = join3(CONFIG_ACTOR_MAILBOX.run(config_actor), ENERGY_ACTOR_MAILBOX.run(energy_actor), event_loop());
+    let actor_group_4 = join(CONFIG_ACTOR_MAILBOX.run(config_actor), ENERGY_ACTOR_MAILBOX.run(energy_actor));
 
-    join3(actor_group_1, actor_group_2, join(actor_group_3, actor_group_4)).await;
+    let event_loops = join(fast_event_loop(), slow_event_loop());
+
+    join3(join(actor_group_1, actor_group_2), join(actor_group_3, actor_group_4), event_loops).await;
 }
 
-async fn event_loop() {
+async fn fast_event_loop() {
     loop {
         BOILER_ACTOR_MAILBOX.actor_ref().tell(None, BoilerMessage::SwitchHeater);
         BUTTON_ACTOR_MAILBOX.actor_ref().tell(None, ButtonMessage::HandleInputStates);
         WATER_ACTOR_MAILBOX.actor_ref().tell(None, WaterMessage::HandleInputState);
+
+        Timer::after(FAST_TICK_INTERVAL).await;
+    }
+}
+
+async fn slow_event_loop() {
+    loop {
         TEMPERATURE_SENSOR_ACTOR_MAILBOX.actor_ref().tell(None, TemperatureSensorMessage::MeasureTemperature);
         ENERGY_ACTOR_MAILBOX.actor_ref().tell(None, EnergyMessage::CheckInactivity);
         CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogTemperatureOptions);
@@ -168,6 +182,6 @@ async fn event_loop() {
         ENERGY_ACTOR_MAILBOX.actor_ref().tell(None, EnergyMessage::LogActiveState);
         WEIGHT_ACTOR_MAILBOX.actor_ref().tell(None, WeightMessage::MonitorWeight);
 
-        Timer::after(TICK_INTERVALL).await;
+        Timer::after(SLOW_TICK_INTERVAL).await;
     }
 }
