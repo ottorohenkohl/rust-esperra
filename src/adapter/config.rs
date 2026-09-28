@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ConfigError, ReadConfigPort, WriteConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, TemperatureOptions};
+use crate::domain::config::port::{ConfigError, ReadConfigPort, WriteConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, TemperatureOptions, WeightOptions};
 
 use alloc::sync::Arc;
 use core::cell::RefCell;
@@ -25,6 +25,7 @@ struct ConfigState {
     temperature_options: TemperatureOptions,
     network_info: NetworkInfo,
     pid_gains: PidGains,
+    weight_options: WeightOptions,
 }
 
 impl ConfigState {
@@ -50,6 +51,10 @@ impl ConfigState {
         FlashConfigAdapter::write_string(&mut record, 638, &self.network_info.mqtt_password);
         FlashConfigAdapter::write_string(&mut record, 702, &self.network_info.mqtt_client_id);
         FlashConfigAdapter::write_string(&mut record, 766, &self.network_info.mqtt_topic_prefix);
+        FlashConfigAdapter::write_f64(&mut record, 830, self.weight_options.double_shot_weight);
+        FlashConfigAdapter::write_f64(&mut record, 838, self.weight_options.espresso_cup_weight);
+        FlashConfigAdapter::write_f64(&mut record, 846, self.weight_options.capuccino_cup_weight);
+        record[854] = u8::from(self.weight_options.automatic_weight_brew_start);
 
         record
     }
@@ -98,6 +103,12 @@ impl FlashConfigAdapter {
                     k_intergral: Self::read_f64(&record, 44),
                     k_derivative: Self::read_f64(&record, 52),
                 },
+                weight_options: WeightOptions {
+                    double_shot_weight: Self::read_f64(&record, 830),
+                    espresso_cup_weight: Self::read_f64(&record, 838),
+                    capuccino_cup_weight: Self::read_f64(&record, 846),
+                    automatic_weight_brew_start: record[854] != 0,
+                },
             }
         } else {
             let state = ConfigState {
@@ -106,6 +117,7 @@ impl FlashConfigAdapter {
                 temperature_options: Self::default_temperature_options(),
                 network_info: Self::default_network_info(),
                 pid_gains: Self::default_pid_gains(),
+                weight_options: Self::default_weight_options(),
             };
 
             storage.write(CONFIG_STORAGE_OFFSET, &state.record()).map_err(|_| ConfigError::StorageWriteFailed)?;
@@ -175,6 +187,15 @@ impl FlashConfigAdapter {
         TemperatureOptions { target_temperature }
     }
 
+    fn default_weight_options() -> WeightOptions {
+        let double_shot_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_DOUBLE_SHOT_WEIGHT").unwrap_or("50.0").parse().unwrap();
+        let espresso_cup_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_ESPRESSO_CUP_WEIGHT").unwrap_or("100.0").parse().unwrap();
+        let capuccino_cup_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_CAPUCCINO_CUP_WEIGHT").unwrap_or("200.0").parse().unwrap();
+        let automatic_weight_brew_start = option_env!("ESPERRA_WEIGHT_OPTIONS_AUTOMATIC_WEIGHT_BREW_START").unwrap_or("true").parse().unwrap();
+
+        WeightOptions { double_shot_weight, espresso_cup_weight, capuccino_cup_weight, automatic_weight_brew_start }
+    }
+
     fn default_pid_gains() -> PidGains {
         let k_proportional = option_env!("ESPERRA_PID_GAINS_K_PROPORTIONAL").unwrap_or("0.1").parse().unwrap();
         let k_intergral = option_env!("ESPERRA_PID_GAINS_K_INTERGRAL").unwrap_or("0.2").parse().unwrap();
@@ -229,6 +250,10 @@ impl ReadConfigPort for FlashConfigAdapter {
 
     fn read_network_info(&self) -> NetworkInfo {
         critical_section::with(|cs| self.state.borrow_ref(cs).network_info.clone())
+    }
+
+    fn read_weight_options(&self) -> WeightOptions {
+        critical_section::with(|cs| self.state.borrow_ref(cs).weight_options)
     }
 }
 
@@ -286,6 +311,18 @@ impl WriteConfigPort for FlashConfigAdapter {
             let mut state = self.state.borrow_ref_mut(cs);
 
             state.network_info = info;
+
+            state.record()
+        });
+
+        self.persist(record).await;
+    }
+
+    async fn write_weight_options(&self, options: WeightOptions) {
+        let record = critical_section::with(|cs| {
+            let mut state = self.state.borrow_ref_mut(cs);
+
+            state.weight_options = options;
 
             state.record()
         });

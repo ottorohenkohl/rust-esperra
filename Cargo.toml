@@ -2,7 +2,7 @@
 edition      = "2024"
 name         = "esperra"
 rust-version = "1.91"
-version      = "1.1.8"
+version      = "1.1.9"
 
 [[bin]]
 name = "esperra"
@@ -16,7 +16,7 @@ esp-bootloader-esp-idf  = { version = "0.5.0", features = ["esp32s3", "log-04"] 
 esp-backtrace           = { version = "0.19.0", features = ["esp32s3", "panic-handler", "println"] }
 esp-hal                 = { version = "~1.1.0", features = ["esp32s3", "log-04", "unstable"] }
 esp-println             = { version = "0.17.0", features = ["esp32s3", "log-04"] }
-esp-radio               = { version = "0.18.0", features = ["esp32s3", "log-04", "wifi"] }
+esp-radio               = { version = "0.18.0", features = ["esp32s3", "log-04", "wifi", "ble", "coex", "unstable"] }
 esp-rtos                = { version = "0.3.0", features = ["embassy", "esp-alloc", "esp-radio", "esp32s3", "log-04"] }
 esp-storage             = { version = "0.9.0", features = ["esp32s3"] }
 heapless                = { version = "0.9.1", features = ["serde"] }
@@ -40,6 +40,7 @@ static_cell             = "2.1.1"
 rust-mqtt               = { version = "0.5.1", default-features = false, features = ["alloc", "v5"] }
 serde                   = { version = "1.0.229", default-features = false, features = ["derive"] }
 serde-json-core         = "0.6.0"
+trouble-host            = { version = "0.6.0", default-features = false, features = ["central", "gatt", "scan", "default-packet-pool"] }
 
 [profile.dev]
 opt-level = "s"

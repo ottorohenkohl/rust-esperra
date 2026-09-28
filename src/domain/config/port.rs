@@ -13,6 +13,7 @@ pub trait ReadConfigPort {
     fn read_pid_gains(&self) -> PidGains;
     fn read_firmware_info(&self) -> FirmwareInfo;
     fn read_network_info(&self) -> NetworkInfo;
+    fn read_weight_options(&self) -> WeightOptions;
 }
 
 pub trait WriteConfigPort {
@@ -21,6 +22,7 @@ pub trait WriteConfigPort {
     async fn write_pid_gains(&self, gains: PidGains);
     async fn write_firmware_info(&self, info: FirmwareInfo);
     async fn write_network_info(&self, info: NetworkInfo);
+    async fn write_weight_options(&self, options: WeightOptions);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
@@ -33,6 +35,14 @@ pub struct HeaterOptions {
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TemperatureOptions {
     pub target_temperature: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+pub struct WeightOptions {
+    pub double_shot_weight: f64,
+    pub espresso_cup_weight: f64,
+    pub capuccino_cup_weight: f64,
+    pub automatic_weight_brew_start: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]

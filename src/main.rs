@@ -9,6 +9,7 @@ use crate::adapter::config::FlashConfigAdapter;
 use crate::adapter::gpio::{Ds18b20TemperatureAdapter, EspInputAdapter, EspOutputAdapter};
 use crate::adapter::logging::MqttLoggingAdapter;
 use crate::adapter::update::EspUpdateAdapter;
+use crate::adapter::weight::BookooWeightAdapter;
 use crate::domain::config::actor::ConfigActor;
 use crate::domain::config::port::ReadConfigPort;
 use crate::domain::config::protocol::ConfigMessage;
@@ -24,6 +25,8 @@ use crate::domain::gpio::actor::{LightActor, TemperatureSensorActor};
 use crate::domain::gpio::protocol::{LightMessage, TemperatureSensorMessage};
 use crate::domain::update::actor::UpdateActor;
 use crate::domain::update::protocol::UpdateMessage;
+use crate::domain::weight::actor::WeightActor;
+use crate::domain::weight::protocol::WeightMessage;
 use crate::library::actor::implementation::EmbassyMailboxImpl;
 use crate::library::debug::implementation::DebugImpl;
 use crate::library::debug::protocol::Color;
@@ -62,6 +65,7 @@ static TEMPERATURE_SENSOR_ACTOR_MAILBOX: EmbassyMailboxImpl<TemperatureSensorMes
 static UPDATE_ACTOR_MAILBOX: EmbassyMailboxImpl<UpdateMessage, 1> = EmbassyMailboxImpl::new();
 static CONFIG_ACTOR_MAILBOX: EmbassyMailboxImpl<ConfigMessage, 4> = EmbassyMailboxImpl::new();
 static ENERGY_ACTOR_MAILBOX: EmbassyMailboxImpl<EnergyMessage, 4> = EmbassyMailboxImpl::new();
+static WEIGHT_ACTOR_MAILBOX: EmbassyMailboxImpl<WeightMessage, 4> = EmbassyMailboxImpl::new();
 static NETWORK_STACK: StaticCell<NetworkStackImpl> = StaticCell::new();
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -96,6 +100,7 @@ async fn main(spawner: Spawner) {
     DebugImpl::set(Color::Magenta).await;
 
     let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO15);
+    let weight_adapter = BookooWeightAdapter::new(peripherals.BT, spawner);
 
     DebugImpl::set(Color::Yellow).await;
 
@@ -131,6 +136,7 @@ async fn main(spawner: Spawner) {
     let update_actor = UpdateActor::new("update", update_actor_ref.clone(), update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, power_light_actor_ref.clone(), status_light_actor_ref.clone());
     let config_actor = ConfigActor::new("config", Arc::clone(&config_adapter), Arc::clone(&logging_port));
     let energy_actor = EnergyActor::new("energy", energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), status_light_actor_ref.clone(), Arc::clone(&logging_port));
+    let weight_actor = WeightActor::new("weight", weight_adapter, Arc::clone(&logging_port), energy_actor_ref.clone(), brew_actor_ref.clone(), Arc::clone(&config_adapter));
 
     DebugImpl::set(Color::Cyan).await;
 
@@ -142,9 +148,10 @@ async fn main(spawner: Spawner) {
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), BUTTON_ACTOR_MAILBOX.run(button_actor));
     let actor_group_2 = join3(WATER_ACTOR_MAILBOX.run(water_actor), POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor));
-    let actor_group_3 = join3(TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor), UPDATE_ACTOR_MAILBOX.run(update_actor), join(CONFIG_ACTOR_MAILBOX.run(config_actor), join(ENERGY_ACTOR_MAILBOX.run(energy_actor), event_loop())));
+    let actor_group_3 = join3(TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor), UPDATE_ACTOR_MAILBOX.run(update_actor), WEIGHT_ACTOR_MAILBOX.run(weight_actor));
+    let actor_group_4 = join3(CONFIG_ACTOR_MAILBOX.run(config_actor), ENERGY_ACTOR_MAILBOX.run(energy_actor), event_loop());
 
-    join3(actor_group_1, actor_group_2, actor_group_3).await;
+    join3(actor_group_1, actor_group_2, join(actor_group_3, actor_group_4)).await;
 }
 
 async fn event_loop() {
@@ -157,6 +164,7 @@ async fn event_loop() {
         CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogTemperatureOptions);
         CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogFirmwareInfo);
         ENERGY_ACTOR_MAILBOX.actor_ref().tell(None, EnergyMessage::LogActiveState);
+        WEIGHT_ACTOR_MAILBOX.actor_ref().tell(None, WeightMessage::MonitorWeight);
 
         Timer::after(TICK_INTERVALL).await;
     }

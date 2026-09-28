@@ -7,3 +7,4 @@ pub mod energy;
 pub mod gpio;
 pub mod logging;
 pub mod update;
+pub mod weight;
