@@ -23,6 +23,24 @@ impl<P, T, L> LightActor<P, T, L> {
     }
 }
 
+impl<P, T, L> LightActor<P, T, L> where P: OutputPort, T: TimerPort, L: LoggingPort {
+    async fn set_active(&mut self, active: bool) {
+        self.output_port.set_active(active).await;
+        self.logging_port.log(self, None, &LightResponse::Active(active));
+    }
+
+    async fn blink_times(&mut self, times: u8) {
+        for _ in 0..(times * 2) {
+            let active = self.output_port.invert_state().await;
+
+            self.logging_port.log(self, None, &LightResponse::Active(active));
+            self.timer_port.wait_for(500).await;
+        }
+
+        self.timer_port.wait_for(1000).await;
+    }
+}
+
 impl<P, T, L> Actor for LightActor<P, T, L> where P: OutputPort, T: TimerPort, L: LoggingPort {
     type Message = LightMessage;
 
@@ -32,20 +50,8 @@ impl<P, T, L> Actor for LightActor<P, T, L> where P: OutputPort, T: TimerPort, L
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            LightMessage::SetActive(active) => {
-                self.output_port.set_active(active).await;
-                self.logging_port.log(self, None, &LightResponse::Active(active));
-            }
-            LightMessage::BlinkTimes(times) => {
-                for _ in 0..(times * 2) {
-                    let active = self.output_port.invert_state().await;
-
-                    self.logging_port.log(self, None, &LightResponse::Active(active));
-                    self.timer_port.wait_for(500).await;
-                }
-
-                self.timer_port.wait_for(1000).await;
-            }
+            LightMessage::SetActive(active) => self.set_active(active).await,
+            LightMessage::BlinkTimes(times) => self.blink_times(times).await,
         }
     }
 }
@@ -64,6 +70,23 @@ impl<P, L> TemperatureSensorActor<P, L> {
     }
 }
 
+impl<P, L> TemperatureSensorActor<P, L> where P: TemperatureSensorPort, L: LoggingPort {
+    async fn measure_temperature(&mut self) {
+        let message = match self.temperature_port.read_temperature().await {
+            Ok(temperature) => {
+                let message = TemperatureSensorResponse::Measured(temperature);
+
+                self.logging_port.log(self, None, &message);
+
+                message
+            },
+            Err(error) => TemperatureSensorResponse::MeasurementFailed(error),
+        };
+
+        self.subscribers.iter().for_each(|subscriber| subscriber.tell(message));
+    }
+}
+
 impl<P, L> Actor for TemperatureSensorActor<P, L> where P: TemperatureSensorPort, L: LoggingPort {
     type Message = TemperatureSensorMessage;
 
@@ -73,22 +96,7 @@ impl<P, L> Actor for TemperatureSensorActor<P, L> where P: TemperatureSensorPort
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            TemperatureSensorMessage::MeasureTemperature => {
-                let message = match self.temperature_port.read_temperature().await {
-                    Ok(temperature) => {
-                        let message = TemperatureSensorResponse::Measured(temperature);
-
-                        self.logging_port.log(self, None, &message);
-
-                        message
-                    },
-                    Err(error) => {
-                        TemperatureSensorResponse::MeasurementFailed(error)
-                    }
-                };
-
-                self.subscribers.iter().for_each(|i| { i.tell(message) });
-            }
+            TemperatureSensorMessage::MeasureTemperature => self.measure_temperature().await,
         }
     }
 }

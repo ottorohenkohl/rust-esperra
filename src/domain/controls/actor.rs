@@ -84,6 +84,11 @@ impl<P, S> ButtonActor<P, S> where P: InputPort, S: InputPort {
             _ => {}
         }
     }
+
+    async fn handle_input_states(&mut self) {
+        self.handle_power_input().await;
+        self.handle_status_input();
+    }
 }
 
 impl<P, S> Actor for ButtonActor<P, S> where P: InputPort, S: InputPort {
@@ -95,10 +100,7 @@ impl<P, S> Actor for ButtonActor<P, S> where P: InputPort, S: InputPort {
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            ButtonMessage::HandleInputStates => {
-                self.handle_power_input().await;
-                self.handle_status_input();
-            }
+            ButtonMessage::HandleInputStates => self.handle_input_states().await,
         }
     }
 }
@@ -127,6 +129,7 @@ impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
             self.boiler_actor.unlock(&self.actor_ref);
             self.brew_actor.unlock(&self.actor_ref);
 
+            self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
             self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
 
             return
@@ -150,9 +153,7 @@ impl<W, L> Actor for WaterActor<W, L> where W: InputPort, L: LoggingPort {
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            WaterMessage::HandleInputState => {
-                self.handle_water_input();
-            }
+            WaterMessage::HandleInputState => self.handle_water_input(),
         }
     }
 }

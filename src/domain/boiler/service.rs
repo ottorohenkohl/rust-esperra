@@ -30,7 +30,7 @@ impl<C> PidService<C> where C: ReadConfigPort {
 
         let proportional = pid_gains.k_proportional * temperature_error;
         let derivative = pid_gains.k_derivative * (self.last_temperature - actual_temperature) / interval_size;
-        let raw_integral = pid_gains.k_intergral * temperature_error * interval_size + self.stored_integral;
+        let raw_integral = pid_gains.k_integral * temperature_error * interval_size + self.stored_integral;
 
         let raw_output = proportional + raw_integral + derivative;
 

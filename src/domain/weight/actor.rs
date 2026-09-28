@@ -72,7 +72,7 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
         let options = self.config_port.read_weight_options();
 
         if options.automatic_weight_brew_start {
-            if 2.0 >= (weight - options.espresso_cup_weight).abs() || (weight - options.capuccino_cup_weight).abs() <= 2.0 {
+            if 2.0 >= (weight - options.espresso_cup_weight).abs() || (weight - options.cappuccino_cup_weight).abs() <= 2.0 {
                 self.reset_scale().await;
 
                 self.brew_actor.tell(None, BrewMessage::SetBrewing(true));

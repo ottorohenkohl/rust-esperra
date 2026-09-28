@@ -4,6 +4,7 @@ use alloc::sync::Arc;
 
 pub struct Envelope<Message> {
     pub caller: Option<usize>,
+    pub is_system: bool,
     pub message: Message,
 }
 
@@ -23,7 +24,11 @@ impl<Message: 'static> ActorRef<Message> {
     }
 
     pub fn tell(&self, caller: Option<&dyn Caller>, message: Message) {
-        self.mailbox.try_send(Envelope { caller: caller.map(Caller::address), message });
+        self.mailbox.try_send(Envelope { caller: caller.map(Caller::address), is_system: false, message });
+    }
+
+    pub fn system_tell(&self, message: Message) {
+        self.mailbox.try_send(Envelope { caller: None, is_system: true, message });
     }
 
     pub fn lock(&self, caller: &dyn Caller) -> bool {

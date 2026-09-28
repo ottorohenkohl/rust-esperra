@@ -11,7 +11,7 @@ pub enum ConfigError {
 pub struct HeaterOptions {
     pub heating_cycle_ms: u64,
     pub target_temperature_interval: f64,
-    pub boost_intervall_size: f64,
+    pub boost_interval_size: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
@@ -23,14 +23,14 @@ pub struct TemperatureOptions {
 pub struct WeightOptions {
     pub double_shot_weight: f64,
     pub espresso_cup_weight: f64,
-    pub capuccino_cup_weight: f64,
+    pub cappuccino_cup_weight: f64,
     pub automatic_weight_brew_start: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct PidGains {
     pub k_proportional: f64,
-    pub k_intergral: f64,
+    pub k_integral: f64,
     pub k_derivative: f64,
 }
 

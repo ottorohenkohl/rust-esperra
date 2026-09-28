@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum BoilerMessage {
+    InvalidateTemperature,
     SetActive(bool),
     SwitchHeater,
     UpdateTemperature(f64),
@@ -13,7 +14,7 @@ impl From<TemperatureSensorResponse> for BoilerMessage {
     fn from(reading: TemperatureSensorResponse) -> Self {
         match reading {
             TemperatureSensorResponse::Measured(measured_temperature) => Self::UpdateTemperature(measured_temperature),
-            TemperatureSensorResponse::MeasurementFailed(_) => Self::SetActive(false),
+            TemperatureSensorResponse::MeasurementFailed(_) => Self::InvalidateTemperature,
         }
     }
 }

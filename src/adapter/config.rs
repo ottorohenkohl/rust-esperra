@@ -36,10 +36,10 @@ impl ConfigState {
         FlashConfigAdapter::write_u16(&mut record, 0, MAGIC_RECORD);
         FlashConfigAdapter::write_u64(&mut record, 4, self.heater_options.heating_cycle_ms);
         FlashConfigAdapter::write_f64(&mut record, 12, self.heater_options.target_temperature_interval);
-        FlashConfigAdapter::write_f64(&mut record, 20, self.heater_options.boost_intervall_size);
+        FlashConfigAdapter::write_f64(&mut record, 20, self.heater_options.boost_interval_size);
         FlashConfigAdapter::write_f64(&mut record, 28, self.temperature_options.target_temperature);
         FlashConfigAdapter::write_f64(&mut record, 36, self.pid_gains.k_proportional);
-        FlashConfigAdapter::write_f64(&mut record, 44, self.pid_gains.k_intergral);
+        FlashConfigAdapter::write_f64(&mut record, 44, self.pid_gains.k_integral);
         FlashConfigAdapter::write_f64(&mut record, 52, self.pid_gains.k_derivative);
         FlashConfigAdapter::write_string(&mut record, 60, &self.firmware_info.url);
         FlashConfigAdapter::write_string(&mut record, 316, &self.firmware_info.version);
@@ -54,7 +54,7 @@ impl ConfigState {
         FlashConfigAdapter::write_string(&mut record, 766, &self.network_info.mqtt_topic_prefix);
         FlashConfigAdapter::write_f64(&mut record, 830, self.weight_options.double_shot_weight);
         FlashConfigAdapter::write_f64(&mut record, 838, self.weight_options.espresso_cup_weight);
-        FlashConfigAdapter::write_f64(&mut record, 846, self.weight_options.capuccino_cup_weight);
+        FlashConfigAdapter::write_f64(&mut record, 846, self.weight_options.cappuccino_cup_weight);
         FlashConfigAdapter::write_bool(&mut record, 854, self.weight_options.automatic_weight_brew_start);
 
         record
@@ -82,7 +82,7 @@ impl FlashConfigAdapter {
                 heater_options: HeaterOptions {
                     heating_cycle_ms: Self::read_u64(&record, 4),
                     target_temperature_interval: Self::read_f64(&record, 12),
-                    boost_intervall_size: Self::read_f64(&record, 20),
+                    boost_interval_size: Self::read_f64(&record, 20),
                 },
                 temperature_options: TemperatureOptions {
                     target_temperature: Self::read_f64(&record, 28),
@@ -100,13 +100,13 @@ impl FlashConfigAdapter {
                 },
                 pid_gains: PidGains {
                     k_proportional: Self::read_f64(&record, 36),
-                    k_intergral: Self::read_f64(&record, 44),
+                    k_integral: Self::read_f64(&record, 44),
                     k_derivative: Self::read_f64(&record, 52),
                 },
                 weight_options: WeightOptions {
                     double_shot_weight: Self::read_f64(&record, 830),
                     espresso_cup_weight: Self::read_f64(&record, 838),
-                    capuccino_cup_weight: Self::read_f64(&record, 846),
+                    cappuccino_cup_weight: Self::read_f64(&record, 846),
                     automatic_weight_brew_start: Self::read_bool(&record, 854),
                 },
             }
@@ -184,9 +184,9 @@ impl FlashConfigAdapter {
     fn default_heater_options() -> HeaterOptions {
         let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("1000").parse().unwrap();
         let target_temperature_interval = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL").unwrap_or("0.5").parse().unwrap();
-        let boost_intervall_size = option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("5.0").parse().unwrap();
+        let boost_interval_size = option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("5.0").parse().unwrap();
 
-        HeaterOptions { heating_cycle_ms, target_temperature_interval, boost_intervall_size }
+        HeaterOptions { heating_cycle_ms, target_temperature_interval, boost_interval_size }
     }
 
     fn default_temperature_options() -> TemperatureOptions {
@@ -198,18 +198,18 @@ impl FlashConfigAdapter {
     fn default_weight_options() -> WeightOptions {
         let double_shot_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_DOUBLE_SHOT_WEIGHT").unwrap_or("50.0").parse().unwrap();
         let espresso_cup_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_ESPRESSO_CUP_WEIGHT").unwrap_or("100.0").parse().unwrap();
-        let capuccino_cup_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_CAPUCCINO_CUP_WEIGHT").unwrap_or("200.0").parse().unwrap();
+        let cappuccino_cup_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_CAPUCCINO_CUP_WEIGHT").unwrap_or("200.0").parse().unwrap();
         let automatic_weight_brew_start = option_env!("ESPERRA_WEIGHT_OPTIONS_AUTOMATIC_WEIGHT_BREW_START").unwrap_or("true").parse().unwrap();
 
-        WeightOptions { double_shot_weight, espresso_cup_weight, capuccino_cup_weight, automatic_weight_brew_start }
+        WeightOptions { double_shot_weight, espresso_cup_weight, cappuccino_cup_weight, automatic_weight_brew_start }
     }
 
     fn default_pid_gains() -> PidGains {
         let k_proportional = option_env!("ESPERRA_PID_GAINS_K_PROPORTIONAL").unwrap_or("0.1").parse().unwrap();
-        let k_intergral = option_env!("ESPERRA_PID_GAINS_K_INTERGRAL").unwrap_or("0.2").parse().unwrap();
+        let k_integral = option_env!("ESPERRA_PID_GAINS_K_INTERGRAL").unwrap_or("0.2").parse().unwrap();
         let k_derivative = option_env!("ESPERRA_PID_GAINS_K_DERIVATIVE").unwrap_or("0.3").parse().unwrap();
 
-        PidGains { k_proportional, k_intergral, k_derivative }
+        PidGains { k_proportional, k_integral, k_derivative }
     }
 
     fn default_firmware_info() -> FirmwareInfo {

@@ -167,7 +167,8 @@ async fn main(spawner: Spawner) {
 
 async fn fast_event_loop() {
     loop {
-        BOILER_ACTOR_MAILBOX.actor_ref().tell(None, BoilerMessage::SwitchHeater);
+        BOILER_ACTOR_MAILBOX.actor_ref().system_tell(BoilerMessage::SwitchHeater);
+
         BUTTON_ACTOR_MAILBOX.actor_ref().tell(None, ButtonMessage::HandleInputStates);
         WATER_ACTOR_MAILBOX.actor_ref().tell(None, WaterMessage::HandleInputState);
 

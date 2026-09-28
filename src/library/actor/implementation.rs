@@ -28,7 +28,7 @@ impl<Message: 'static, const SIZE: usize> EmbassyMailboxImpl<Message, SIZE> {
             let envelope = self.channel.receive().await;
             let owner = self.lock.load(Ordering::SeqCst);
 
-            if owner == UNLOCKED || envelope.caller == Some(owner) {
+            if envelope.is_system || owner == UNLOCKED || envelope.caller == Some(owner) {
                 actor.handle(envelope.message).await;
             }
         }

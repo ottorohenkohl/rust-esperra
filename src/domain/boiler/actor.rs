@@ -8,14 +8,21 @@ use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
 
 use alloc::sync::Arc;
-use embassy_time::Instant;
+use embassy_time::{Duration, Instant};
+
+const MAX_TEMPERATURE_AGE: Duration = Duration::from_secs(5);
+
+const MIN_VALID_TEMPERATURE: f64 = 2.0;
+const MAX_VALID_TEMPERATURE: f64 = 125.0;
 
 pub struct BoilerActor<C, H> {
     public_name: &'static str,
-    
+
     actor_ref: ActorRef<BoilerMessage>,
     config_port: Arc<C>,
     current_temperature: Option<f64>,
+    last_temperature_update: Option<Instant>,
+    active: bool,
     cycle_start: Instant,
     heating_output_port: H,
     pid_service: PidService<C>,
@@ -28,8 +35,11 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         let cycle_start = Instant::now();
 
         let current_temperature = None;
+        let last_temperature_update = None;
 
-        Self { public_name, actor_ref, config_port, current_temperature, cycle_start, heating_output_port, pid_service, status_light_actor }
+        let active = true;
+
+        Self { public_name, actor_ref, config_port, current_temperature, last_temperature_update, active, cycle_start, heating_output_port, pid_service, status_light_actor }
     }
 
     fn update_cycle(&mut self) {
@@ -41,20 +51,47 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         }
     }
 
-    fn should_heat(&mut self) -> bool {
+    fn has_valid_temperature(&self) -> bool {
         let Some(current_temperature) = self.current_temperature else { return false };
+        let Some(last_temperature_update) = self.last_temperature_update else { return false };
 
+        let in_valid_temperature_range = (MIN_VALID_TEMPERATURE..MAX_VALID_TEMPERATURE).contains(&current_temperature);
+        let in_valid_time_range = last_temperature_update.elapsed() <= MAX_TEMPERATURE_AGE;
+
+        current_temperature.is_finite() && in_valid_temperature_range && in_valid_time_range
+    }
+
+    fn should_heat(&mut self) -> bool {
+        if !self.active || !self.has_valid_temperature() {
+            return false;
+        }
+
+        let current_temperature = self.current_temperature.unwrap();
         let heater_options = self.config_port.read_heater_options();
         let temperature_options = self.config_port.read_temperature_options();
         let cycle_elapsed_ms = self.cycle_start.elapsed().as_millis();
 
-        if current_temperature < temperature_options.target_temperature - heater_options.boost_intervall_size {
+        if current_temperature < temperature_options.target_temperature - heater_options.boost_interval_size {
             return true;
         }
 
         let pid_percentage = self.pid_service.compute(current_temperature, temperature_options.target_temperature);
 
         (cycle_elapsed_ms as f64) < heater_options.heating_cycle_ms as f64 * pid_percentage / 100.0
+    }
+
+    fn invalidate_temperature(&mut self) {
+        self.current_temperature = None;
+        self.last_temperature_update = None;
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+
+    fn update_temperature(&mut self, measured_temperature: f64) {
+        self.current_temperature = Some(measured_temperature);
+        self.last_temperature_update = Some(Instant::now());
     }
 
     async fn switch_heater(&mut self) {
@@ -89,15 +126,10 @@ impl<C, H> Actor for BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            BoilerMessage::SwitchHeater => {
-                self.switch_heater().await;
-            }
-            BoilerMessage::UpdateTemperature(measured_temperature) => {
-                self.current_temperature = Some(measured_temperature);
-            }
-            BoilerMessage::SetActive(active) => {
-                self.heating_output_port.set_active(active).await;
-            }
+            BoilerMessage::InvalidateTemperature => self.invalidate_temperature(),
+            BoilerMessage::SetActive(active) => self.set_active(active),
+            BoilerMessage::SwitchHeater => self.switch_heater().await,
+            BoilerMessage::UpdateTemperature(measured_temperature) => self.update_temperature(measured_temperature),
         }
     }
 }
