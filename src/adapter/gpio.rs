@@ -9,19 +9,24 @@ use onewire::DS18B20;
 
 pub struct EspOutputAdapter<'d> {
     pin: Output<'d>,
+    active_low: bool,
 }
 
 impl<'d> EspOutputAdapter<'d> {
-    pub fn new(pin: impl OutputPin + 'd) -> Self {
-        let pin = Output::new(pin, Level::Low, OutputConfig::default());
+    pub fn new(pin: impl OutputPin + 'd, active_low: bool) -> Self {
+        let inactive_level = if active_low { Level::High } else { Level::Low };
 
-        Self { pin }
+        let pin = Output::new(pin, inactive_level, OutputConfig::default());
+
+        Self { pin, active_low }
     }
 }
 
 impl OutputPort for EspOutputAdapter<'_> {
     async fn set_active(&mut self, active: bool) {
-        if active {
+        let high = active != self.active_low;
+
+        if high {
             self.pin.set_high();
         } else {
             self.pin.set_low();
@@ -29,7 +34,7 @@ impl OutputPort for EspOutputAdapter<'_> {
     }
 
     async fn invert_state(&mut self) -> bool {
-        let active = self.pin.is_set_low();
+        let active = self.pin.is_set_low() != self.active_low;
 
         self.set_active(active).await;
 

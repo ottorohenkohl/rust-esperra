@@ -40,6 +40,7 @@ impl DebugImpl {
         match color {
             Color::Red => (24, 0, 0),
             Color::Magenta => (24, 0, 12),
+            Color::Orange => (24, 8, 0),
             Color::Yellow => (20, 16, 0),
             Color::White => (12, 12, 12),
             Color::Green => (0, 24, 0),
