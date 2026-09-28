@@ -1,8 +1,7 @@
 use crate::domain::weight::port::{ConnectionState, WeightPort};
 
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select, select3, Either};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
@@ -20,6 +19,8 @@ const BOOKOO_COMMAND_UUID: u16 = 0xff12;
 const WEIGHT_PACKET_LENGTH: usize = 20;
 const TARE_COMMAND: [u8; 6] = [0x03, 0x0a, 0x01, 0x00, 0x00, 0x08];
 const SCAN_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(10);
+const GATT_TIMEOUT: Duration = Duration::from_secs(10);
 
 const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 2;
@@ -122,7 +123,7 @@ async fn bookoo_ble_task(controller: ExternalController<BleConnector<'static>, 1
     let Host { mut central, mut runner, .. } = stack.build();
     let handler = BookooAdvertisementHandler;
 
-    let _ = join(runner.run_with_handler(&handler), async {
+    let _ = select(runner.run_with_handler(&handler), async {
         loop {
             while !matches!(COMMANDS.receive().await, ScaleCommand::Connect) {}
 
@@ -154,42 +155,36 @@ async fn bookoo_ble_task(controller: ExternalController<BleConnector<'static>, 1
                 connect_params: Default::default(),
             };
 
-            let Ok(connection) = central.connect(&connect_config).await else {
+            let Ok(Ok(connection)) = with_timeout(CONNECTION_TIMEOUT, central.connect(&connect_config)).await else {
                 CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
                 continue
             };
 
-            let Ok(client) = GattClient::<_, DefaultPacketPool, 4>::new(&stack, &connection).await else {
+            let Ok(Ok(client)) = with_timeout(GATT_TIMEOUT, GattClient::<_, DefaultPacketPool, 4>::new(&stack, &connection)).await else {
                 CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
                 continue
             };
-
-            let Ok(services) = client.services_by_uuid(&Uuid::new_short(BOOKOO_SERVICE_UUID)).await else {
-                CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
-                continue
-            };
-            let Some(service) = services.first() else {
-                CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
-                continue
-            };
-
-            let Ok(weight_characteristic) = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(BOOKOO_WEIGHT_UUID)).await else {
-                CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
-                continue
-            };
-            let Ok(command_characteristic) = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(BOOKOO_COMMAND_UUID)).await else {
-                CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
-                continue
-            };
-            let Ok(mut notifications) = client.subscribe(&weight_characteristic, false).await else {
-                CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
-                continue
-            };
-
-            *LATEST_WEIGHT.lock().await = 0.0;
-            CONNECTION_RESULT.signal(ConnectionState::ConnectionEstablished);
 
             let session = async {
+                let discovery = async {
+                    let services = client.services_by_uuid(&Uuid::new_short(BOOKOO_SERVICE_UUID)).await.ok()?;
+                    let service = services.first()?;
+                    let weight_characteristic = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(BOOKOO_WEIGHT_UUID)).await.ok()?;
+                    let command_characteristic = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(BOOKOO_COMMAND_UUID)).await.ok()?;
+                    let notifications = client.subscribe(&weight_characteristic, false).await.ok()?;
+
+                    Some((command_characteristic, notifications))
+                };
+
+                let Ok(Some((command_characteristic, mut notifications))) = with_timeout(GATT_TIMEOUT, discovery).await else {
+                    log::warn!("Bookoo GATT setup failed or timed out");
+                    return
+                };
+
+                *LATEST_WEIGHT.lock().await = 0.0;
+                CONNECTION_RESULT.signal(ConnectionState::ConnectionEstablished);
+                log::info!("Bookoo weight notifications subscribed");
+
                 loop {
                     match select(notifications.next(), COMMANDS.receive()).await {
                         Either::First(notification) => {
@@ -199,13 +194,32 @@ async fn bookoo_ble_task(controller: ExternalController<BleConnector<'static>, 1
                         },
                         Either::Second(ScaleCommand::Connect) => CONNECTION_RESULT.signal(ConnectionState::AlreadyConnected),
                         Either::Second(ScaleCommand::Tare) => {
-                            let _ = client.write_characteristic(&command_characteristic, &TARE_COMMAND).await;
+                            if !matches!(with_timeout(GATT_TIMEOUT, client.write_characteristic(&command_characteristic, &TARE_COMMAND)).await, Ok(Ok(()))) {
+                                return
+                            }
                         },
                     }
                 }
             };
 
-            let _ = select(client.task(), session).await;
+            let disconnected = async {
+                loop {
+                    if matches!(connection.next().await, ConnectionEvent::Disconnected { .. }) {
+                        return
+                    }
+                }
+            };
+
+            // GATT responses must be received while discovery and subscription are awaiting them.
+            let _ = select3(client.task(), session, disconnected).await;
+            CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
         }
     }).await;
+
+    log::warn!("Bookoo BLE runner stopped");
+
+    loop {
+        COMMANDS.receive().await;
+        CONNECTION_RESULT.signal(ConnectionState::ConnectionFailed);
+    }
 }

@@ -73,7 +73,9 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
-    esp_alloc::heap_allocator!(size: 160 * 1024);
+    // Reuse bootloader RAM so the main stack has room for actor and radio initialization.
+    esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 64 * 1024);
+    esp_alloc::heap_allocator!(size: 96 * 1024);
 
     let peripherals = esp_hal::init(Config::default().with_cpu_clock(CpuClock::max()));
 
