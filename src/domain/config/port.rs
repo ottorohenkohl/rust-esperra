@@ -22,9 +22,6 @@ pub struct TemperatureOptions {
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct WeightOptions {
     pub double_shot_weight: f64,
-    pub espresso_cup_weight: f64,
-    pub cappuccino_cup_weight: f64,
-    pub automatic_weight_brew_start: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]

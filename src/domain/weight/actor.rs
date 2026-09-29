@@ -10,6 +10,8 @@ use crate::library::actor::model::ActorRef;
 
 use alloc::sync::Arc;
 
+const SHOT_STOP_OFFSET_GRAMS: f64 = 2.0;
+
 pub struct WeightActor<P, L, C> {
     public_name: &'static str,
 
@@ -39,19 +41,12 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
         }
     }
 
-    async fn reset_scale(&mut self) {
-        if self.is_connection_failed().await {
-            return
-        }
-
-        self.weight_port.tare().await;
-    }
-
     async fn watch_for_full_shot(&mut self, weight: f64) {
-        if weight >= self.config_port.read_weight_options().double_shot_weight {
-            self.brew_actor.tell(None, BrewMessage::SetBrewing(false));
+        let stop_weight = self.config_port.read_weight_options().double_shot_weight - SHOT_STOP_OFFSET_GRAMS;
 
-            self.reset_scale().await;
+        if weight >= stop_weight {
+            self.brew_actor.tell(None, BrewMessage::SetBrewing(false));
+            self.weight_port.reset_ready_state().await;
         }
     }
 
@@ -64,19 +59,8 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
 
         self.logging_port.log(self, None, &weight);
 
-        self.watch_for_full_shot(weight).await;
-        self.watch_for_empty_cup(weight).await;
-    }
-
-    async fn watch_for_empty_cup(&mut self, weight: f64) {
-        let options = self.config_port.read_weight_options();
-
-        if options.automatic_weight_brew_start {
-            if 2.0 >= (weight - options.espresso_cup_weight).abs() || (weight - options.cappuccino_cup_weight).abs() <= 2.0 {
-                self.reset_scale().await;
-
-                self.brew_actor.tell(None, BrewMessage::SetBrewing(true));
-            }
+        if self.weight_port.is_ready_state().await {
+            self.watch_for_full_shot(weight).await;
         }
     }
 }
@@ -90,7 +74,6 @@ impl<P, L, C> Actor for WeightActor<P, L, C> where P: WeightPort, L: LoggingPort
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            WeightMessage::ResetScale => self.reset_scale().await,
             WeightMessage::MonitorWeight => self.monitor_weight().await,
         }
     }

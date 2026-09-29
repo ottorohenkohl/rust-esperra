@@ -53,9 +53,6 @@ impl ConfigState {
         FlashConfigAdapter::write_string(&mut record, 702, &self.network_info.mqtt_client_id);
         FlashConfigAdapter::write_string(&mut record, 766, &self.network_info.mqtt_topic_prefix);
         FlashConfigAdapter::write_f64(&mut record, 830, self.weight_options.double_shot_weight);
-        FlashConfigAdapter::write_f64(&mut record, 838, self.weight_options.espresso_cup_weight);
-        FlashConfigAdapter::write_f64(&mut record, 846, self.weight_options.cappuccino_cup_weight);
-        FlashConfigAdapter::write_bool(&mut record, 854, self.weight_options.automatic_weight_brew_start);
 
         record
     }
@@ -105,9 +102,6 @@ impl FlashConfigAdapter {
                 },
                 weight_options: WeightOptions {
                     double_shot_weight: Self::read_f64(&record, 830),
-                    espresso_cup_weight: Self::read_f64(&record, 838),
-                    cappuccino_cup_weight: Self::read_f64(&record, 846),
-                    automatic_weight_brew_start: Self::read_bool(&record, 854),
                 },
             }
         } else {
@@ -134,13 +128,10 @@ impl FlashConfigAdapter {
 
     async fn persist(&self, record: [u8; RECORD_SIZE]) {
         let mut storage = self.flash.lock().await;
-        
+
         let _ = storage.write(CONFIG_STORAGE_OFFSET, &record);
     }
 
-    fn read_bool(record: &[u8; RECORD_SIZE], offset: usize) -> bool {
-        record[offset] != 0
-    }
 
     fn read_u16(record: &[u8; RECORD_SIZE], offset: usize) -> u16 {
         u16::from_le_bytes(record[offset..offset + 2].try_into().unwrap())
@@ -161,9 +152,6 @@ impl FlashConfigAdapter {
         from_utf8(&bytes[..length]).ok().and_then(|value| String::try_from(value).ok()).unwrap_or_default()
     }
 
-    fn write_bool(record: &mut [u8; RECORD_SIZE], offset: usize, value: bool) {
-        record[offset] = u8::from(value);
-    }
 
     fn write_u16(record: &mut [u8; RECORD_SIZE], offset: usize, value: u16) {
         record[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
@@ -197,11 +185,8 @@ impl FlashConfigAdapter {
 
     fn default_weight_options() -> WeightOptions {
         let double_shot_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_DOUBLE_SHOT_WEIGHT").unwrap_or("50.0").parse().unwrap();
-        let espresso_cup_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_ESPRESSO_CUP_WEIGHT").unwrap_or("100.0").parse().unwrap();
-        let cappuccino_cup_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_CAPUCCINO_CUP_WEIGHT").unwrap_or("200.0").parse().unwrap();
-        let automatic_weight_brew_start = option_env!("ESPERRA_WEIGHT_OPTIONS_AUTOMATIC_WEIGHT_BREW_START").unwrap_or("true").parse().unwrap();
 
-        WeightOptions { double_shot_weight, espresso_cup_weight, cappuccino_cup_weight, automatic_weight_brew_start }
+        WeightOptions { double_shot_weight }
     }
 
     fn default_pid_gains() -> PidGains {

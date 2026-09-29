@@ -1,4 +1,4 @@
-use super::port::{FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, ReadConfigPort, TemperatureOptions, WeightOptions, WriteConfigPort};
+use super::port::{HeaterOptions, NetworkInfo, PidGains, ReadConfigPort, TemperatureOptions, WeightOptions, WriteConfigPort};
 use super::protocol::{ConfigMessage, ConfigResponse};
 
 use crate::domain::logging::port::LoggingPort;
@@ -32,9 +32,6 @@ impl<C, L> ConfigActor<C, L> where C: ReadConfigPort + WriteConfigPort, L: Loggi
         self.config_port.write_pid_gains(gains).await;
     }
 
-    async fn update_firmware_info(&self, info: FirmwareInfo) {
-        self.config_port.write_firmware_info(info).await;
-    }
 
     async fn update_network_info(&self, info: NetworkInfo) {
         self.config_port.write_network_info(info).await;
@@ -81,9 +78,9 @@ impl<C, L> Actor for ConfigActor<C, L> where C: ReadConfigPort + WriteConfigPort
             ConfigMessage::UpdateHeaterOptions(options) => self.update_heater_options(options).await,
             ConfigMessage::UpdateTemperatureOptions(options) => self.update_temperature_options(options).await,
             ConfigMessage::UpdatePidGains(gains) => self.update_pid_gains(gains).await,
-            ConfigMessage::UpdateFirmwareInfo(info) => self.update_firmware_info(info).await,
             ConfigMessage::UpdateNetworkInfo(info) => self.update_network_info(info).await,
             ConfigMessage::UpdateWeightOptions(options) => self.update_weight_options(options).await,
+
             ConfigMessage::LogHeaterOptions => self.log_heater_options(),
             ConfigMessage::LogTemperatureOptions => self.log_temperature_options(),
             ConfigMessage::LogPidGains => self.log_pid_gains(),

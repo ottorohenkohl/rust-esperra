@@ -7,7 +7,6 @@ pub enum ConfigMessage {
     UpdateHeaterOptions(HeaterOptions),
     UpdateTemperatureOptions(TemperatureOptions),
     UpdatePidGains(PidGains),
-    UpdateFirmwareInfo(FirmwareInfo),
     UpdateNetworkInfo(NetworkInfo),
     UpdateWeightOptions(WeightOptions),
     LogHeaterOptions,

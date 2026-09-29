@@ -182,6 +182,7 @@ async fn slow_event_loop() {
         ENERGY_ACTOR_MAILBOX.actor_ref().tell(None, EnergyMessage::CheckInactivity);
         CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogTemperatureOptions);
         CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogFirmwareInfo);
+        CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogPidGains);
         ENERGY_ACTOR_MAILBOX.actor_ref().tell(None, EnergyMessage::LogActiveState);
         WEIGHT_ACTOR_MAILBOX.actor_ref().tell(None, WeightMessage::MonitorWeight);
 
