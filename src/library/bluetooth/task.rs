@@ -1,6 +1,6 @@
-use super::protocol::{BluetoothCommand, BluetoothConnectionState, BluetoothError, BluetoothNotification, BluetoothProfile};
+use super::protocol::{BluetoothCommand, BluetoothConnectionState, BluetoothNotification, BluetoothProfile};
 
-use super::implementation::{COMMANDS, CONNECTION_RESULT, NOTIFICATIONS, WRITE_RESULT};
+use super::implementation::{COMMANDS, CONNECTION_RESULT, NOTIFICATIONS};
 
 use core::cell::RefCell;
 use embassy_futures::select::Either;
@@ -95,7 +95,6 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
             let profile = loop {
                 match COMMANDS.receive().await {
                     BluetoothCommand::Connect(profile) => break profile,
-                    BluetoothCommand::Write(..) => WRITE_RESULT.signal(Err(BluetoothError::ConnectionFailed)),
                 }
             };
 
@@ -151,13 +150,12 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
                     let services = client.services_by_uuid(&Uuid::new_short(profile.service_uuid)).await.ok()?;
                     let service = services.first()?;
                     let notification_characteristic = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(profile.notification_uuid)).await.ok()?;
-                    let write_characteristic = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(profile.write_uuid)).await.ok()?;
                     let notifications = client.subscribe(&notification_characteristic, false).await.ok()?;
 
-                    Some((write_characteristic, notifications))
+                    Some(notifications)
                 };
 
-                let Ok(Some((write_characteristic, mut notifications))) = with_timeout(GATT_TIMEOUT, discovery).await else {
+                let Ok(Some(mut notifications)) = with_timeout(GATT_TIMEOUT, discovery).await else {
                     CONNECTION_RESULT.signal(BluetoothConnectionState::ConnectionFailed);
 
                     return
@@ -173,22 +171,6 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
                             }
                         },
                         Either::Second(BluetoothCommand::Connect(_)) => CONNECTION_RESULT.signal(BluetoothConnectionState::AlreadyConnected),
-                        Either::Second(BluetoothCommand::Write(characteristic_uuid, payload)) => {
-                            if characteristic_uuid != profile.write_uuid {
-                                WRITE_RESULT.signal(Err(BluetoothError::WriteFailed));
-
-                                continue
-                            }
-
-                            match with_timeout(GATT_TIMEOUT, client.write_characteristic(&write_characteristic, payload.as_slice())).await {
-                                Ok(Ok(())) => WRITE_RESULT.signal(Ok(())),
-                                _ => {
-                                    WRITE_RESULT.signal(Err(BluetoothError::WriteFailed));
-
-                                    return
-                                },
-                            }
-                        },
                     }
                 }
             };
@@ -204,14 +186,12 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
             let _ = select3(client.task(), session, disconnected).await;
 
             CONNECTION_RESULT.signal(BluetoothConnectionState::ConnectionFailed);
-            WRITE_RESULT.signal(Err(BluetoothError::ConnectionFailed));
         }
     }).await;
 
     loop {
         match COMMANDS.receive().await {
             BluetoothCommand::Connect(_) => CONNECTION_RESULT.signal(BluetoothConnectionState::ConnectionFailed),
-            BluetoothCommand::Write(..) => WRITE_RESULT.signal(Err(BluetoothError::ConnectionFailed)),
         }
     }
 }

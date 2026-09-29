@@ -7,7 +7,6 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
 const BOOKOO_AUTOMATIC_MODE_PACKET_TYPE: u8 = 0x0d;
-const BOOKOO_COMMAND_UUID: u16 = 0xff12;
 const BOOKOO_PACKET_LENGTH: usize = 20;
 const BOOKOO_READY_EVENT: u8 = 0x02;
 const BOOKOO_SERVICE_UUID: u16 = 0x0ffe;
@@ -21,7 +20,6 @@ const BOOKOO_PROFILE: BluetoothProfile = BluetoothProfile {
     advertisement_name_prefix: BOOKOO_ADVERTISEMENT_NAME,
     service_uuid: BOOKOO_SERVICE_UUID,
     notification_uuid: BOOKOO_WEIGHT_UUID,
-    write_uuid: BOOKOO_COMMAND_UUID,
 };
 
 static LATEST_WEIGHT: Mutex<CriticalSectionRawMutex, f64> = Mutex::new(0.0);
@@ -92,7 +90,7 @@ fn parse_weight_packet(packet: &[u8]) -> Option<f64> {
     let sign = match packet[6] {
         0x00 | b'+' => 1.0,
         0x01 | b'-' => -1.0,
-        
+
         _ => return None,
     };
 
