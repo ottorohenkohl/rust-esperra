@@ -108,7 +108,7 @@ async fn main(spawner: Spawner) {
     DebugImpl::set(Color::Orange).await;
 
     let weight_adapter = BookooWeightAdapter::new(bluetooth, spawner);
-    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO15);
+    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO7);
 
     DebugImpl::set(Color::Yellow).await;
 
