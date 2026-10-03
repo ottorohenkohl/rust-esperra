@@ -1,121 +1,287 @@
-# esperra
+# Esperra
 
-Sample `no_std` embedded Rust firmware for the **ESP32-S3**, built with
-[`esp-hal`](https://github.com/esp-rs/esp-hal) and [`embassy`](https://embassy.dev/).
+`Esperra` ist eine in Rust geschriebene `no_std`-Firmware für die Steuerung einer Espressomaschine mit einem ESP32-S3. Sie verbindet Temperaturregelung, Brühsteuerung, Wasserstandserkennung, eine Bluetooth-Waage, MQTT-Telemetrie und sichere OTA-Updates in einer asynchronen Actor-Architektur.
 
-Scaffolded with [`esp-generate`](https://github.com/esp-rs/esp-generate)
-(`--chip esp32s3 -o unstable-hal -o embassy -o esp-backtrace -o log -o ci`).
+> [!WARNING]
+> Espressomaschinen arbeiten mit Netzspannung, hohen Strömen, Druck und heißem Wasser. Die Firmware ersetzt keine geeigneten Schutzschaltungen, Sicherungen, Thermostate oder eine fachgerechte elektrische Installation. Arbeiten an netzspannungsführenden Komponenten dürfen nur von qualifizierten Personen durchgeführt werden.
 
-> Note: the ESP32-S3 is an **Xtensa** chip, not RISC-V. That means it needs Espressif's
-> Rust fork toolchain (installed via [`espup`](https://github.com/esp-rs/espup)), unlike
-> the ESP32-C6 the workspace template originally targeted. This project stays `no_std`
-> (no ESP-IDF C toolchain needed) — only the compiler itself differs.
+## Funktionsumfang
 
-## What it does
+- PID-basierte Kesselregelung mit Vollheizphase unterhalb des konfigurierbaren Boost-Bereichs
+- Temperaturmessung über einen DS18B20 mit Plausibilitäts- und Aktualitätsprüfung
+- Ansteuerung von Heizung, Pumpe, Ventil sowie Betriebs- und Statusleuchte
+- Auswertung von Maschinen-, Brüh- und Wasserstandssignalen
+- Automatischer Brühstopp anhand einer Bookoo-Waage über Bluetooth LE
+- Energiesparmodus nach einer Stunde ohne Aktivität
+- Persistente Laufzeitkonfiguration im Flash
+- MQTT 5 über TLS für Steuerung und Telemetrie
+- HTTPS-OTA mit semantischem Versionsvergleich und Bootloader-Rollback
+- GitLab-CI-Pipeline für Bootloader, Recovery-Image, OTA-Image und Releases
 
-Provides an ESP32-S3 boiler-control firmware built around a small typed actor facade over
-Embassy. The composition root in `src/main.rs` wires a boiler, a DS18B20 temperature sensor,
-a heating-element output, and a one-second temperature measurement interval. The heating output
-uses GPIO21 so native USB Serial/JTAG on GPIO19/GPIO20 remains available for diagnostics.
+## Zielhardware
 
-## Project conventions
+Die Firmware ist fest für einen **ESP32-S3 mit mindestens 8 MB Flash** konfiguriert. Das Build-Target lautet `xtensa-esp32s3-none-elf`.
 
-### Actors and messaging
+| Funktion | GPIO | Richtung | Aktivpegel |
+| --- | ---: | --- | --- |
+| DS18B20 / OneWire | 15 | Ein-/Ausgang | Open Drain |
+| Wasserstand | 16 | Eingang mit Pull-up | Low |
+| Brühstatus | 17 | Eingang mit Pull-up | Low |
+| Maschinenstatus | 18 | Eingang mit Pull-up | Low |
+| Heizung | 21 | Ausgang | High |
+| Debug-LED-Kanal | 38 | Ausgang / RMT | hardwareabhängig |
+| Statusleuchte | 39 | Ausgang | Low |
+| Betriebsleuchte | 40 | Ausgang | Low |
+| Pumpe | 41 | Ausgang | Low |
+| Ventil | 42 | Ausgang | Low |
+| Debug-LED-Kanal | 48 | Ausgang / RMT | hardwareabhängig |
 
-Actors own their state and process exactly one mailbox message at a time through the asynchronous
-`Actor::handle` method. A handler may await a timer or hardware operation; its mailbox does not
-deliver another message until that handler finishes, while other actors continue running. Use the
-small facade in `src/library/actor.rs` rather than Embassy channels directly. `ActorRef::tell` is
-synchronous and fire-and-forget: it attempts to enqueue a message but never waits for the recipient
-to process it.
+GPIO 19 und GPIO 20 bleiben frei, damit natives USB Serial/JTAG des ESP32-S3 verfügbar bleibt.
 
-Every actor defines a dedicated protocol whose variants describe the intended action of the
-recipient. Prefer imperative names such as `MeasureTemperature`, `RegulateHeating`, `StopHeating`,
-and `SetActive`. Neutral information published to multiple recipients uses a factual type such as
-`TemperatureReading`. A recipient protocol includes such a published type through `From<T>`, and
-`ActorRef::subscriber<T>` is available only when that conversion exists. Publishers store typed
-`Subscriber<T>` values and must not know the protocols or identities of their recipients.
+## Systemübersicht
 
-`Mailbox<Message, CAPACITY>` makes queue capacity explicit because capacity affects actor behavior.
-It controls how many messages may wait, not how many are processed concurrently. `tell` uses
-non-blocking delivery, and a message is currently dropped when its mailbox is full. Choose capacity
-with periodic, redundant, and safety-relevant messages in mind.
+```mermaid
+flowchart TD
+    Inputs[Maschinen-, Brüh- und Wassersignale] --> Controls[Controls Actors]
+    Sensor[DS18B20] --> Temperature[Temperature Actor]
+    Temperature --> Boiler[Boiler Actor + PID]
+    Scale[Bookoo BLE-Waage] --> Weight[Weight Actor]
+    Weight --> Brew[Brew Actor]
+    Controls --> Boiler
+    Controls --> Brew
+    Energy[Energy Actor] --> Boiler
+    Energy --> Brew
+    Boiler --> Heater[Heizung]
+    Boiler --> Lights[Statusleuchten]
+    Brew --> Pump[Pumpe + Ventil]
+    MQTT[MQTT/TLS] <--> Actors[Domain Actors]
+    Actors --> Update[OTA Actor]
+    Update --> Flash[OTA-Partitionen]
+```
 
-### Domain and ports
+Die Anwendung trennt Verantwortlichkeiten in drei Bereiche:
 
-Actors, protocols, published values, subscriber management, and decisions belong in `src/domain`.
-External operations are represented by narrow domain traits whose names end in `Port`, for example
-`ConfigPort`, `TemperaturePort`, `LightPort`, and `InputPort`. Adapter code in `src/adapter` owns the
-actual ESP HAL, OneWire, GPIO, flash, and similar external APIs. Adapters implement ports; they do
-not own actor protocols or actor behavior.
+- `src/domain` enthält Aktoren, Nachrichten, Zustandslogik und schmale Port-Traits.
+- `src/adapter` bindet Flash, GPIO, OneWire, MQTT-Logging, OTA und die Bookoo-Waage an die Domain an.
+- `src/library` stellt die Actor-Laufzeit sowie Bluetooth-, Netzwerk-, Messaging- und Debug-Infrastruktur bereit.
 
-Actors use generic port injection consistently. For example, `TemperatureActor<P>` is generic over
-`TemperaturePort`, and `BoilerActor<C>` and its internal `PidService<C>` are generic over the same
-shared `ConfigPort` implementation. Prefer this static-dispatch pattern over `dyn Port`. Internal
-services such as `PidService` are constructed by their owning actor so the composition root does not
-need to know about internal dependencies.
+`src/main.rs` ist der Composition Root. Dort werden alle Adapter und Aktoren erzeugt, miteinander verbunden und in Embassy ausgeführt. Die schnellen Regel- und Eingangsschleifen laufen alle 100 ms, die langsameren Mess-, Telemetrie- und Wartungsaufgaben jede Sekunde.
 
-Port operations return the shared `library::error::Error` instead of operation-specific hardware
-error types. Hardware failures are treated uniformly unless the domain has a concrete reason to
-distinguish them. Actors may translate a generic failure into a meaningful published value such as
-`TemperatureReading::MeasurementFailed`.
+## Voraussetzungen
 
-Do not create wrappers that merely rename an external type without adding useful behavior. Direct
-use of a focused external type, such as `embassy_time::Instant`, is acceptable when a custom
-abstraction would only add indirection.
+- ESP32-S3 mit mindestens 8 MB Flash
+- Rust ab Version 1.91 laut `Cargo.toml`
+- Espressifs Xtensa-Toolchain, installiert über [`espup`](https://github.com/esp-rs/espup)
+- [`espflash`](https://github.com/esp-rs/espflash) zum lokalen Flashen
+- Optional: ESP-IDF 5.5.x zum lokalen Erzeugen des Rollback-Bootloaders
 
-### Formatting
+Der ESP32-S3 verwendet Xtensa und kann deshalb nicht mit der regulären Rust-Toolchain für RISC-V-Mikrocontroller gebaut werden.
 
-Formatting favors horizontal readability and minimal nesting. `rustfmt.toml` sets a very large line
-width and maximum small-expression heuristics. Keep statements on one line where practical. Group
-imports from the same direct module with braces, for example `use library::actor::{ActorRef,
-Mailbox};`, but avoid nested import trees or braces inside braces. Prefer several flat imports when
-modules differ.
+## Entwicklungsumgebung einrichten
 
-## Developing
+```bash
+cargo install espup
+espup install
+. "$HOME/export-esp.sh"
+cargo install espflash
+```
 
-This is meant to be developed inside the **Embedded Rust** Coder workspace template
-(`coder/esp32-rust`), which installs `espup`'s Xtensa Rust toolchain for `esp32s3`,
-sets it as the default `rustup` toolchain, and has `espflash` ready to go.
+Die Datei `.cargo/config.toml` wählt automatisch das richtige Target, baut `core` und `alloc` für dieses Target und richtet `espflash` als Runner ein.
+
+## Firmware konfigurieren
+
+Standardwerte werden zur Compile-Zeit über Umgebungsvariablen gesetzt. Beim ersten Start legt die Firmware daraus einen persistenten Datensatz in der `config`-Partition an.
+
+| Variable | Standardwert | Bedeutung |
+| --- | --- | --- |
+| `ESPERRA_WIFI_SSID` | leer | WLAN-SSID |
+| `ESPERRA_WIFI_PASSWORD` | leer | WLAN-Passwort |
+| `ESPERRA_NTP_SERVER` | `pool.ntp.org` | Server für die Zeitsynchronisation |
+| `ESPERRA_MQTT_HOSTNAME` | `mqtt.rohenkohl.dev` | MQTT-Broker |
+| `ESPERRA_MQTT_PORT` | `8883` | MQTT-TLS-Port |
+| `ESPERRA_MQTT_USERNAME` | `esperra` | MQTT-Benutzername |
+| `ESPERRA_MQTT_PASSWORD` | leer | MQTT-Passwort |
+| `ESPERRA_MQTT_CLIENT_ID` | zufällig | Client-ID; ohne Vorgabe wird `esperra-<zufall>` verwendet |
+| `ESPERRA_MQTT_TOPIC_PREFIX` | `esperra` | Präfix aller MQTT-Topics |
+| `ESPERRA_FIRMWARE_URL` | GitLab Package Registry des Projekts | Basis-URL für OTA-Images |
+| `ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS` | `2000` | Länge eines PID-Schaltzyklus in Millisekunden |
+| `ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL` | `0.5` | Toleranzbereich der Statusanzeige in °C |
+| `ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE` | `5.0` | Abstand zum Sollwert für dauerhaftes Heizen in °C |
+| `ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE` | `94.0` | Solltemperatur in °C |
+| `ESPERRA_PID_GAINS_K_PROPORTIONAL` | `0.1` | Proportionalanteil des PID-Reglers |
+| `ESPERRA_PID_GAINS_K_INTERGRAL` | `0.2` | Integralanteil des PID-Reglers; Schreibweise entspricht dem Code |
+| `ESPERRA_PID_GAINS_K_DERIVATIVE` | `0.3` | Differentialanteil des PID-Reglers |
+| `ESPERRA_WEIGHT_OPTIONS_DOUBLE_SHOT_WEIGHT` | `50.0` | Zielgewicht eines Doppelshots in Gramm |
+
+Beispiel:
+
+```bash
+export ESPERRA_WIFI_SSID='mein-wlan'
+export ESPERRA_WIFI_PASSWORD='geheim'
+export ESPERRA_MQTT_HOSTNAME='mqtt.example.com'
+export ESPERRA_MQTT_USERNAME='esperra'
+export ESPERRA_MQTT_PASSWORD='geheim'
+export ESPERRA_MQTT_TOPIC_PREFIX='kueche/esperra'
+
+cargo build --release
+```
+
+> [!IMPORTANT]
+> Diese Werte greifen nur, wenn noch kein gültiger Konfigurationsdatensatz im Flash vorhanden ist. Spätere Builds überschreiben die gespeicherte Konfiguration nicht. Änderungen können über MQTT geschrieben oder durch Löschen der Konfigurationspartition erzwungen werden. Zugangsdaten werden in die Firmware kompiliert und unverschlüsselt in der Flash-Konfiguration gespeichert.
+
+## Bauen und flashen
+
+### Build prüfen
 
 ```bash
 cargo build --release
 ```
 
-### Flashing from inside the workspace
+Das Binary liegt anschließend unter:
 
-Only works if the ESP32 is reachable by the workspace (uncommon for a remote pod):
-
-```bash
-cargo run --release   # uses the runner configured in .cargo/config.toml (espflash flash --monitor)
+```text
+target/xtensa-esp32s3-none-elf/release/esperra
 ```
 
-### Flashing from your local machine (recommended)
+### Direkt aus der Entwicklungsumgebung flashen
 
-Every push to `main` builds a rollback-enabled ESP-IDF bootloader, a merged `firmware.bin` for initial/recovery flashing, and an application-only `firmware-ota.bin`. Download `firmware.bin` from the `build:firmware` job for the first installation. On your machine, install just `espflash` (`brew install espflash` / `cargo install espflash`) or `esptool` (`pip install esptool`) - no Rust toolchain needed - and flash:
+Wenn das USB-Gerät in der Entwicklungsumgebung erreichbar ist:
 
 ```bash
-espflash flash --format raw firmware.bin /dev/tty.usbserial-XXXX
-# or
+cargo run --release
+```
+
+Der konfigurierte Runner flasht die Anwendung mit 8-MB-Layout und öffnet anschließend den seriellen Monitor.
+
+### Erstinstallation oder Wiederherstellung
+
+Für ein neues Gerät wird das zusammengeführte `firmware.bin` aus dem GitLab-CI-Job `build:firmware` empfohlen. Es enthält Bootloader, Partitionstabelle und Factory-Anwendung.
+
+```bash
+espflash flash --format raw firmware.bin /dev/tty.usbmodemXXXX
+```
+
+Alternativ mit `esptool`:
+
+```bash
 esptool.py --chip esp32s3 write_flash 0x0 firmware.bin
 ```
 
-## OTA updates
+Das kleinere `firmware-ota.bin` ist ausschließlich für die OTA-Anwendungspartitionen vorgesehen und kein vollständiges Recovery-Image.
 
-Turn the machine power off for 8–12 seconds, then back on, to check the configured firmware base URL and install a newer image into the inactive OTA partition. The image version is read from its ESP application descriptor and compared with the old version stored in the configuration. Before checking, the firmware stops brewing and sends a boiler safety shutdown; both indicator lights blink until the update completes. It synchronizes the RTC through SNTP and validates the download's HTTPS certificate and hostname against the embedded ISRG Root X1 certificate.
+## MQTT-Schnittstelle
 
-The ESP32-S3 module must provide at least 8 MB flash. Flash `firmware.bin` once over USB to install the custom bootloader and `res/partitions.csv`; subsequent releases use `firmware-ota.bin`. Existing devices also need this one-time USB flash before automatic rollback is available.
+Die Firmware verbindet sich per MQTT 5 über TLS. Vor dem TLS-Handshake wird die Echtzeituhr über SNTP synchronisiert. Als Trust Anchor dient `res/isrg-root-x1.pem`.
 
-Configure these protected GitLab CI/CD variables before building:
+Bei einem Topic-Präfix `esperra` werden folgende Kommandokanäle abonniert:
 
-- `ESPERRA_WIFI_SSID` and `ESPERRA_WIFI_PASSWORD` - Wi-Fi credentials compiled into the firmware.
-- `ESPERRA_NTP_SERVER` - optional SNTP host; defaults to `pool.ntp.org`.
-- `ESPERRA_FIRMWARE_URL` - default base URL used when the configuration has no firmware URL, for example `https://gitlab.rohenkohl.dev/api/v4/projects/38/packages/generic/firmware`.
+| Topic | Nachrichtentyp | Beispiel |
+| --- | --- | --- |
+| `esperra/in/boiler` | `BoilerMessage` | `{"SetActive":true}` |
+| `esperra/in/brew` | `BrewMessage` | `{"SetBrewing":true}` |
+| `esperra/in/update` | `UpdateMessage` | `"Start"` |
+| `esperra/in/config` | `ConfigMessage` | `{"UpdateTemperatureOptions":{"target_temperature":93.0}}` |
+| `esperra/in/energy` | `EnergyMessage` | `{"SetActive":true}` |
+| `esperra/in/weight` | `WeightMessage` | `"MonitorWeight"` |
 
-A release requires the `Cargo.toml` version and tag to agree, for example version `0.2.0` with tag `v0.2.0`. The release job publishes a versioned Generic Package Registry package and replaces `latest/firmware-ota.bin`. Firmware downloads are public and require no GitLab credentials. Keep `res/isrg-root-x1.pem` current if the GitLab certificate chain changes to a different root CA.
+Beispiel mit `mosquitto_pub`:
 
-The same 8–12 second power-off gesture confirms a newly booted OTA image. Until confirmation, the custom bootloader restores the previous valid OTA image after a reset or power loss. CI builds this bootloader from `boot/sdkconfig.defaults` with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` and supplies it to `espflash` when creating `firmware.bin`.
+```bash
+mosquitto_pub \
+  --host mqtt.example.com \
+  --port 8883 \
+  --username esperra \
+  --pw geheim \
+  --topic esperra/in/config \
+  --message '{"UpdatePidGains":{"k_proportional":0.8,"k_integral":0.15,"k_derivative":0.05}}'
+```
 
-## CI
+Telemetrie wird als JSON unter `<präfix>/out/<aktor>` veröffentlicht. Relevante Topics sind unter anderem:
 
-`.gitlab-ci.yml` builds the custom ESP-IDF bootloader, the merged recovery image, and the application-only OTA image on every push. A semantic-version tag additionally publishes immutable firmware and replaces the latest OTA image through GitLab's Generic Package Registry.
+- `.../out/temperature` und `.../out/weight`
+- `.../out/water` und `.../out/energy`
+
+- `.../out/config/heater_options`
+- `.../out/config/temperature_options`
+- `.../out/config/pid_gains`
+- `.../out/config/firmware_info`
+- `.../out/config/network_info`
+- `.../out/config/weight_options`
+
+Die Enum-Payloads verwenden Serdes standardmäßige extern getaggte JSON-Darstellung. Nachrichten werden fire-and-forget in begrenzte Actor-Mailboxen eingestellt; bei einer vollen Mailbox kann eine Nachricht verworfen werden.
+
+## Regelung und Schutzverhalten
+
+- Die Heizung bleibt aus, solange kein gültiger Temperaturwert vorliegt.
+- Gültige Messwerte müssen endlich, zwischen 2 °C und unter 125 °C sowie höchstens fünf Sekunden alt sein.
+- Unterhalb von `Solltemperatur - Boost-Bereich` heizt die Firmware durchgehend; darüber wird die Leistung per PID auf den Heizzyklus abgebildet.
+- Bei zu niedrigem Wasserstand werden Kessel und Brühgruppe gesperrt, Heizung und Bezug abgeschaltet und die Betriebsleuchte blinkt.
+- Nach einer Stunde ohne Aktivität werden Heizung, Bezug und Leuchten deaktiviert.
+- Sobald die Bookoo-Waage ihren Ready-Zustand meldet, stoppt die Firmware den Bezug zwei Gramm vor dem konfigurierten Zielgewicht.
+
+Diese Softwaremechanismen sind zusätzliche Betriebslogik und keine funktional sicheren Schutzfunktionen.
+
+## OTA-Updates und Rollback
+
+Ein Update kann über `"Start"` auf `<präfix>/in/update` oder über die Wartungsgeste ausgelöst werden: Maschine für **8 bis 12 Sekunden** ausschalten und wieder einschalten.
+
+Der Ablauf:
+
+1. Eingänge, Temperaturmessung, Kessel, Brühgruppe und Leuchten werden exklusiv für den Update-Aktor gesperrt.
+2. Heizung, Pumpe und Ventil werden abgeschaltet; anschließend wartet die Firmware zwei Sekunden.
+3. Ein bereits gestartetes OTA-Image wird als gültig bestätigt, oder die Firmware lädt `<firmware-url>/latest/firmware-ota.bin` per HTTPS.
+4. Die Version aus dem ESP-App-Descriptor wird als `major.minor.patch` mit der gespeicherten Version verglichen.
+5. Ein neueres Image wird in die inaktive OTA-Partition geschrieben, aktiviert und per Software-Reset gestartet.
+6. Bis zur Bestätigung durch die nächste Wartungsgeste kann der rollback-fähige Bootloader auf das vorherige Image zurückkehren.
+
+Während des Downloads blinken beide Leuchten im Abstand von 500 ms. Die Partitionierung in `res/partitions.csv` reserviert eine Factory- und zwei OTA-Partitionen mit jeweils `0x1a0000` Byte.
+
+## GitLab CI und Releases
+
+Die Pipeline in `.gitlab-ci.yml` führt drei Stufen aus:
+
+1. `build:bootloader` erstellt mit ESP-IDF 5.5.2 einen Bootloader mit aktiviertem App-Rollback.
+2. `build:firmware` baut die Release-Firmware und erzeugt `firmware.bin` sowie `firmware-ota.bin`.
+3. `release:firmware` veröffentlicht bei Tags im Format `vMAJOR.MINOR.PATCH` das OTA-Image in der Generic Package Registry.
+
+Vor einem Release müssen Paketversion und Tag übereinstimmen:
+
+```bash
+# Cargo.toml: version = "1.2.0"
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+Der Release-Job veröffentlicht die versionierte Datei und ersetzt zusätzlich `latest/firmware-ota.bin`. In GitLab sollten WLAN-, MQTT- und sonstige Zugangsdaten als geschützte CI/CD-Variablen gepflegt werden.
+
+## Projektstruktur
+
+```text
+.
+├── .cargo/config.toml       # Xtensa-Target, rustflags und espflash-Runner
+├── boot/                    # ESP-IDF-Projekt für den Rollback-Bootloader
+├── res/
+│   ├── isrg-root-x1.pem     # Root-CA für MQTT und OTA
+│   └── partitions.csv       # Config-, Factory- und OTA-Partitionen
+├── src/
+│   ├── adapter/             # Hardware- und Infrastrukturadapter
+│   ├── domain/              # Aktoren, Protokolle und Ports
+│   ├── library/             # Actor-, BLE-, Netzwerk- und MQTT-Bausteine
+│   └── main.rs              # Hardwareaufbau und Actor-Verdrahtung
+├── .gitlab-ci.yml           # Build- und Release-Pipeline
+└── Cargo.toml
+```
+
+## Entwicklungskonventionen
+
+- Domänenlogik hängt nur von schmalen `*Port`-Traits ab; Hardwaredetails bleiben in `src/adapter`.
+- Aktoren besitzen ihren Zustand und verarbeiten immer genau eine Nachricht gleichzeitig.
+- Publizierte Ereignisse werden über typisierte `Subscriber<T>` verteilt.
+- Mailboxgrößen sind bewusst Teil des Verhaltens und werden in `src/main.rs` festgelegt.
+- Für Ports wird statische, generische Dependency Injection gegenüber `dyn Port` bevorzugt, sofern kein gemeinsam genutztes Trait-Objekt erforderlich ist.
+- Formatierung erfolgt mit der projektspezifischen `rustfmt.toml`.
+
+```bash
+cargo fmt --all -- --check
+cargo build --release
+```

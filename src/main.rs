@@ -54,7 +54,7 @@ mod adapter;
 mod domain;
 mod library;
 
-const FAST_TICK_INTERVAL: Duration = Duration::from_millis(100);
+const FAST_TICK_INTERVAL: Duration = Duration::from_millis(200);
 const SLOW_TICK_INTERVAL: Duration = Duration::from_millis(1000);
 
 static BOILER_ACTOR_MAILBOX: EmbassyMailboxImpl<BoilerMessage, 8> = EmbassyMailboxImpl::new();
@@ -109,7 +109,7 @@ async fn main(spawner: Spawner) {
 
     let bluetooth = EspBluetooth::initialize(peripherals.BT, spawner);
     let weight_adapter = BookooWeightAdapter::new(bluetooth, spawner);
-    
+
     DebugImpl::set(Color::Yellow).await;
 
     let power_input_adapter = EspInputAdapter::new(peripherals.GPIO17, Pull::Up);
@@ -139,8 +139,8 @@ async fn main(spawner: Spawner) {
     let brew_actor = BrewActor::new("brew", pump_output_adapter, valve_output_adapter);
     let button_actor = ButtonActor::new("button", button_actor_ref.clone(), brew_actor_ref.clone(), power_input_adapter, status_input_adapter, update_actor_ref.clone(), energy_actor_ref.clone());
     let water_actor = WaterActor::new("water", water_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), water_input_adapter, Arc::clone(&logging_adapter));
-    let power_light_actor = LightActor::new("light/power", power_light_output_adapter, EspTimerAdapter::new(), Arc::clone(&logging_adapter));
-    let status_light_actor = LightActor::new("light/status", status_light_output_adapter, EspTimerAdapter::new(), Arc::clone(&logging_adapter));
+    let power_light_actor = LightActor::new("light/power", power_light_output_adapter, EspTimerAdapter::new());
+    let status_light_actor = LightActor::new("light/status", status_light_output_adapter, EspTimerAdapter::new());
     let temperature_sensor_actor = TemperatureSensorActor::new("temperature", temperature_adapter, Arc::clone(&logging_adapter), Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());
     let update_actor = UpdateActor::new("update", update_actor_ref.clone(), update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, power_light_actor_ref.clone(), status_light_actor_ref.clone());
     let config_actor = ConfigActor::new("config", Arc::clone(&config_adapter), Arc::clone(&logging_adapter));

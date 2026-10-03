@@ -170,7 +170,7 @@ impl FlashConfigAdapter {
     }
 
     fn default_heater_options() -> HeaterOptions {
-        let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("1000").parse().unwrap();
+        let heating_cycle_ms = option_env!("ESPERRA_HEATER_OPTIONS_HEATING_CYCLE_MS").unwrap_or("2000").parse().unwrap();
         let target_temperature_interval = option_env!("ESPERRA_HEATER_OPTIONS_TARGET_TEMPERATURE_INTERVAL").unwrap_or("0.5").parse().unwrap();
         let boost_interval_size = option_env!("ESPERRA_HEATER_OPTIONS_BOOST_INTERVAL_SIZE").unwrap_or("5.0").parse().unwrap();
 

@@ -1,5 +1,5 @@
 use super::port::{OutputPort, TemperatureSensorPort};
-use super::protocol::{LightMessage, LightResponse, TemperatureSensorMessage, TemperatureSensorResponse};
+use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
 
 use crate::domain::clock::port::TimerPort;
 use crate::domain::logging::port::LoggingPort;
@@ -9,31 +9,27 @@ use crate::library::actor::model::Subscriber;
 use alloc::sync::Arc;
 use heapless::Vec;
 
-pub struct LightActor<P, T, L> {
+pub struct LightActor<P, T> {
     public_name: &'static str,
 
     output_port: P,
     timer_port: T,
-    logging_port: Arc<L>,
 }
 
-impl<P, T, L> LightActor<P, T, L> {
-    pub fn new(public_name: &'static str, output_port: P, timer_port: T, logging_port: Arc<L>) -> Self {
-        Self { output_port, timer_port, public_name, logging_port }
+impl<P, T> LightActor<P, T> {
+    pub fn new(public_name: &'static str, output_port: P, timer_port: T) -> Self {
+        Self { output_port, timer_port, public_name }
     }
 }
 
-impl<P, T, L> LightActor<P, T, L> where P: OutputPort, T: TimerPort, L: LoggingPort {
+impl<P, T> LightActor<P, T> where P: OutputPort, T: TimerPort {
     async fn set_active(&mut self, active: bool) {
         self.output_port.set_active(active).await;
-        self.logging_port.log(self, None, &LightResponse::Active(active));
     }
 
     async fn blink_times(&mut self, times: u8) {
         for _ in 0..(times * 2) {
-            let active = self.output_port.invert_state().await;
-
-            self.logging_port.log(self, None, &LightResponse::Active(active));
+            self.output_port.invert_state().await;
             self.timer_port.wait_for(500).await;
         }
 
@@ -41,7 +37,7 @@ impl<P, T, L> LightActor<P, T, L> where P: OutputPort, T: TimerPort, L: LoggingP
     }
 }
 
-impl<P, T, L> Actor for LightActor<P, T, L> where P: OutputPort, T: TimerPort, L: LoggingPort {
+impl<P, T> Actor for LightActor<P, T> where P: OutputPort, T: TimerPort {
     type Message = LightMessage;
 
     fn name(&self) -> &'static str {
