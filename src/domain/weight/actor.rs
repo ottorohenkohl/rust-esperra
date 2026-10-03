@@ -60,6 +60,8 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
         self.logging_port.log(self, None, &weight);
 
         if self.weight_port.is_ready_state().await {
+            self.brew_actor.tell(None, BrewMessage::SetBrewing(true));
+
             self.watch_for_full_shot(weight).await;
         }
     }
