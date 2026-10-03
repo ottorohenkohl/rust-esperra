@@ -65,7 +65,7 @@ static STATUS_LIGHT_ACTOR_MAILBOX: EmbassyMailboxImpl<LightMessage, 1> = Embassy
 static POWER_LIGHT_ACTOR_MAILBOX: EmbassyMailboxImpl<LightMessage, 1> = EmbassyMailboxImpl::new();
 static TEMPERATURE_SENSOR_ACTOR_MAILBOX: EmbassyMailboxImpl<TemperatureSensorMessage, 1> = EmbassyMailboxImpl::new();
 static UPDATE_ACTOR_MAILBOX: EmbassyMailboxImpl<UpdateMessage, 1> = EmbassyMailboxImpl::new();
-static CONFIG_ACTOR_MAILBOX: EmbassyMailboxImpl<ConfigMessage, 4> = EmbassyMailboxImpl::new();
+static CONFIG_ACTOR_MAILBOX: EmbassyMailboxImpl<ConfigMessage, 8> = EmbassyMailboxImpl::new();
 static ENERGY_ACTOR_MAILBOX: EmbassyMailboxImpl<EnergyMessage, 4> = EmbassyMailboxImpl::new();
 static WEIGHT_ACTOR_MAILBOX: EmbassyMailboxImpl<WeightMessage, 4> = EmbassyMailboxImpl::new();
 static NETWORK_STACK: StaticCell<NetworkStackImpl> = StaticCell::new();
@@ -183,6 +183,7 @@ async fn slow_event_loop() {
         CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogTemperatureOptions);
         CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogFirmwareInfo);
         CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogPidGains);
+        CONFIG_ACTOR_MAILBOX.actor_ref().tell(None, ConfigMessage::LogWeightOptions);
         ENERGY_ACTOR_MAILBOX.actor_ref().tell(None, EnergyMessage::LogActiveState);
         WEIGHT_ACTOR_MAILBOX.actor_ref().tell(None, WeightMessage::MonitorWeight);
 

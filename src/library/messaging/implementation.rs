@@ -95,7 +95,7 @@ impl<R: Read, W: Write<Error = R::Error>> Split for Duplex<R, W> {
     }
 }
 
-type MqttClient<'a, N> = Client<'a, N, AllocBuffer, 5, 1, 1, 0>;
+type MqttClient<'a, N> = Client<'a, N, AllocBuffer, 8, 1, 1, 0>;
 
 enum ServeOutcome {
     UpdateRequested,
