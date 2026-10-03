@@ -30,10 +30,10 @@ Die Firmware ist fest für einen **ESP32-S3 mit mindestens 8 MB Flash** konfigur
 | Maschinenstatus | 18 | Eingang mit Pull-up | Low |
 | Heizung | 21 | Ausgang | High |
 | Debug-LED-Kanal | 38 | Ausgang / RMT | hardwareabhängig |
-| Statusleuchte | 39 | Ausgang | Low |
-| Betriebsleuchte | 40 | Ausgang | Low |
+| Statusleuchte | 42 | Ausgang | Low |
+| Betriebsleuchte | 39 | Ausgang | Low |
 | Pumpe | 41 | Ausgang | Low |
-| Ventil | 42 | Ausgang | Low |
+| Ventil | 40 | Ausgang | Low |
 | Debug-LED-Kanal | 48 | Ausgang / RMT | hardwareabhängig |
 
 GPIO 19 und GPIO 20 bleiben frei, damit natives USB Serial/JTAG des ESP32-S3 verfügbar bleibt.

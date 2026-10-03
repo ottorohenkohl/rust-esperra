@@ -96,10 +96,10 @@ async fn main(spawner: Spawner) {
     DebugImpl::set(Color::White).await;
 
     let heating_output_adapter = EspOutputAdapter::new(peripherals.GPIO21, false);
-    let status_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO39, true);
-    let power_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO40, true);
+    let status_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO42, true);
+    let power_light_output_adapter = EspOutputAdapter::new(peripherals.GPIO39, true);
     let pump_output_adapter = EspOutputAdapter::new(peripherals.GPIO41, true);
-    let valve_output_adapter = EspOutputAdapter::new(peripherals.GPIO42, true);
+    let valve_output_adapter = EspOutputAdapter::new(peripherals.GPIO40, true);
 
     DebugImpl::set(Color::Magenta).await;
 
