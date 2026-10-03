@@ -112,9 +112,9 @@ async fn main(spawner: Spawner) {
 
     DebugImpl::set(Color::Yellow).await;
 
-    let power_input_adapter = EspInputAdapter::new(peripherals.GPIO18, Pull::Up);
+    let power_input_adapter = EspInputAdapter::new(peripherals.GPIO8, Pull::Up);
     let status_input_adapter = EspInputAdapter::new(peripherals.GPIO17, Pull::Up);
-    let water_input_adapter = EspInputAdapter::new(peripherals.GPIO16, Pull::Up);
+    let water_input_adapter = EspInputAdapter::new(peripherals.GPIO46, Pull::Up);
 
     let network = NETWORK_STACK.init(NetworkStackImpl::new(peripherals.WIFI, peripherals.LPWR, peripherals.RNG, peripherals.ADC1, &config_adapter.read_network_info(), spawner));
 
