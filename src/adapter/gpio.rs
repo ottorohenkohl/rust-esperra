@@ -71,8 +71,8 @@ impl<'d> Ds18b20TemperatureAdapter<'d> {
 
         pin.apply_output_config(&OutputConfig::default().with_drive_mode(DriveMode::OpenDrain));
         pin.set_input_enable(true);
-        pin.set_output_enable(true);
         pin.set_high();
+        pin.set_output_enable(true);
 
         let mut bus = OneWire::new(pin, false);
         let sensor = Self::discover(&mut bus).ok();
@@ -84,9 +84,23 @@ impl<'d> Ds18b20TemperatureAdapter<'d> {
     fn discover(bus: &mut OneWire<Flex<'d>>) -> Result<DS18B20, TemperatureSensorError> {
         let mut delay = Delay::new();
 
-        let device = bus.search_next(&mut DeviceSearch::new_for_family(0x28), &mut delay).map_err(|_| TemperatureSensorError::DiscoveryFailed)?.ok_or(TemperatureSensorError::NotFound)?;
+        let presence = bus.reset(&mut delay).map_err(|_| TemperatureSensorError::DiscoveryFailed)?;
 
-        DS18B20::new(device).map_err(|_| TemperatureSensorError::InitializationFailed)
+        if presence {
+            for _ in 0..3 {
+                let device = bus.search_next(&mut DeviceSearch::new(), &mut delay)
+                    .map_err(|_| TemperatureSensorError::DiscoveryFailed)?;
+    
+                if let Some(device) = device {
+                    return DS18B20::new(device).map_err(|_| TemperatureSensorError::InitializationFailed);
+                }
+            }
+    
+            return Err(TemperatureSensorError::NotFound);
+        }
+
+        
+        Err(TemperatureSensorError::NotFound)
     }
 }
 
@@ -104,7 +118,20 @@ impl TemperatureSensorPort for Ds18b20TemperatureAdapter<'_> {
 
         Timer::after(Duration::from_millis(resolution.time_ms() as u64)).await;
 
-        let raw_temperature = sensor.read_temperature(&mut self.bus, &mut delay).map_err(|_| TemperatureSensorError::MeasurementReadFailed)?;
+        let mut raw_temperature = None;
+
+        for attempt in 0..3 {
+            match sensor.read_temperature(&mut self.bus, &mut delay) {
+                Ok(raw) => {
+                    raw_temperature = Some(raw);
+                    break;
+                }
+                Err(_) if attempt < 2 => Timer::after(Duration::from_millis(10)).await,
+                Err(_) => return Err(TemperatureSensorError::MeasurementReadFailed),
+            }
+        }
+
+        let raw_temperature = raw_temperature.ok_or(TemperatureSensorError::MeasurementReadFailed)?;
 
         Ok(raw_temperature as i16 as f64 / 16.0)
     }

@@ -103,13 +103,13 @@ async fn main(spawner: Spawner) {
 
     DebugImpl::set(Color::Magenta).await;
 
-    let bluetooth = EspBluetooth::initialize(peripherals.BT, spawner);
+    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO7);
 
     DebugImpl::set(Color::Orange).await;
 
+    let bluetooth = EspBluetooth::initialize(peripherals.BT, spawner);
     let weight_adapter = BookooWeightAdapter::new(bluetooth, spawner);
-    let temperature_adapter = Ds18b20TemperatureAdapter::new(peripherals.GPIO7);
-
+    
     DebugImpl::set(Color::Yellow).await;
 
     let power_input_adapter = EspInputAdapter::new(peripherals.GPIO17, Pull::Up);
