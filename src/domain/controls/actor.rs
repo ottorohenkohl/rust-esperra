@@ -4,7 +4,7 @@ use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::energy::protocol::EnergyMessage;
 use crate::domain::gpio::port::InputPort;
-use crate::domain::gpio::protocol::LightMessage;
+use crate::domain::gpio::protocol::{LightMode, LightingMessage};
 use crate::domain::logging::port::LoggingPort;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::interface::Actor;
@@ -109,15 +109,15 @@ pub struct WaterActor<W, L> {
     actor_ref: ActorRef<WaterMessage>,
     boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
-    power_light_actor: ActorRef<LightMessage>,
+    lighting_actor: ActorRef<LightingMessage>,
     water_input_port: W,
     public_name: &'static str,
     logging_port: Arc<L>,
 }
 
 impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
-    pub fn new(public_name: &'static str, actor_ref: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, water_input_port: W, logging_port: Arc<L>) -> Self {
-        Self { actor_ref, boiler_actor, brew_actor, power_light_actor, water_input_port, public_name, logging_port }
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, lighting_actor: ActorRef<LightingMessage>, water_input_port: W, logging_port: Arc<L>) -> Self {
+        Self { actor_ref, boiler_actor, brew_actor, lighting_actor, water_input_port, public_name, logging_port }
     }
 
     fn handle_water_input(&self) {
@@ -130,7 +130,7 @@ impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
             self.brew_actor.unlock(&self.actor_ref);
 
             self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
-            self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(true));
+            self.lighting_actor.tell(Some(&self.actor_ref), LightingMessage::SetPower(LightMode::On));
 
             return
         }
@@ -140,7 +140,7 @@ impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
 
         self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
         self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
-        self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::BlinkTimes(1));
+        self.lighting_actor.tell(Some(&self.actor_ref), LightingMessage::SetPower(LightMode::Blinking));
     }
 }
 

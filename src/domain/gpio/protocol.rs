@@ -3,11 +3,21 @@ use super::port::TemperatureSensorError;
 use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LightMessage {
-    SetActive(bool),
-    BlinkTimes(u8),
+pub enum LightMode {
+    Off,
+    On,
+    Blinking,
 }
 
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LightingMessage {
+    SetPower(LightMode),
+    SetStatus(LightMode),
+    SetBoth(LightMode, LightMode),
+    BlinkStatusTimes(u8),
+    Tick,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TemperatureSensorMessage {

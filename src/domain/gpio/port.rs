@@ -14,7 +14,6 @@ pub trait InputPort {
 }
 
 pub trait OutputPort {
-    async fn invert_state(&mut self) -> bool;
     async fn set_active(&mut self, active: bool);
 }
 

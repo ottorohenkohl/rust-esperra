@@ -32,14 +32,6 @@ impl OutputPort for EspOutputAdapter<'_> {
             self.pin.set_low();
         }
     }
-
-    async fn invert_state(&mut self) -> bool {
-        let active = self.pin.is_set_low() != self.active_low;
-
-        self.set_active(active).await;
-
-        active
-    }
 }
 
 pub struct EspInputAdapter<'d> {
@@ -90,16 +82,16 @@ impl<'d> Ds18b20TemperatureAdapter<'d> {
             for _ in 0..3 {
                 let device = bus.search_next(&mut DeviceSearch::new(), &mut delay)
                     .map_err(|_| TemperatureSensorError::DiscoveryFailed)?;
-    
+
                 if let Some(device) = device {
                     return DS18B20::new(device).map_err(|_| TemperatureSensorError::InitializationFailed);
                 }
             }
-    
+
             return Err(TemperatureSensorError::NotFound);
         }
 
-        
+
         Err(TemperatureSensorError::NotFound)
     }
 }

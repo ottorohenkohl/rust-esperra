@@ -2,7 +2,7 @@ use super::protocol::{EnergyMessage, EnergyResponse};
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
-use crate::domain::gpio::protocol::LightMessage;
+use crate::domain::gpio::protocol::{LightMode, LightingMessage};
 use crate::domain::logging::port::LoggingPort;
 use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
@@ -18,17 +18,16 @@ pub struct EnergyActor<L> {
     actor_ref: ActorRef<EnergyMessage>,
     boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
-    power_light_actor: ActorRef<LightMessage>,
-    status_light_actor: ActorRef<LightMessage>,
+    lighting_actor: ActorRef<LightingMessage>,
     logging_port: Arc<L>,
     last_activity: Option<Instant>,
 }
 
 impl<L> EnergyActor<L> where L: LoggingPort {
-    pub fn new(public_name: &'static str, actor_ref: ActorRef<EnergyMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, power_light_actor: ActorRef<LightMessage>, status_light_actor: ActorRef<LightMessage>, logging_port: Arc<L>) -> Self {
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<EnergyMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, lighting_actor: ActorRef<LightingMessage>, logging_port: Arc<L>) -> Self {
         let last_activity = Some(Instant::now());
 
-        Self { public_name, actor_ref, boiler_actor, brew_actor, power_light_actor, status_light_actor, logging_port, last_activity }
+        Self { public_name, actor_ref, boiler_actor, brew_actor, lighting_actor, logging_port, last_activity }
     }
 
     fn set_active(&mut self, active: bool) {
@@ -36,8 +35,7 @@ impl<L> EnergyActor<L> where L: LoggingPort {
             self.last_activity = Some(Instant::now());
             self.boiler_actor.unlock(&self.actor_ref);
             self.brew_actor.unlock(&self.actor_ref);
-            self.power_light_actor.unlock(&self.actor_ref);
-            self.status_light_actor.unlock(&self.actor_ref);
+            self.lighting_actor.unlock(&self.actor_ref);
             self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
 
             return
@@ -46,15 +44,24 @@ impl<L> EnergyActor<L> where L: LoggingPort {
         self.last_activity = None;
         self.boiler_actor.lock(&self.actor_ref);
         self.brew_actor.lock(&self.actor_ref);
-        self.power_light_actor.lock(&self.actor_ref);
-        self.status_light_actor.lock(&self.actor_ref);
+        self.lighting_actor.lock(&self.actor_ref);
         self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
         self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
-        self.power_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(false));
-        self.status_light_actor.tell(Some(&self.actor_ref), LightMessage::SetActive(false));
+
+        self.switch_lights_off();
+    }
+
+    fn switch_lights_off(&self) {
+        self.lighting_actor.tell(Some(&self.actor_ref), LightingMessage::SetBoth(LightMode::Off, LightMode::Off));
     }
 
     fn check_inactivity(&mut self) {
+        if self.last_activity.is_none() {
+            self.switch_lights_off();
+
+            return
+        }
+
         if matches!(self.last_activity, Some(last_activity) if Instant::now() - last_activity >= INACTIVITY_TIMEOUT) {
             self.set_active(false);
         }

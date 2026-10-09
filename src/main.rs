@@ -4,7 +4,6 @@
 extern crate alloc;
 extern crate esp_backtrace;
 
-use crate::adapter::clock::EspTimerAdapter;
 use crate::adapter::config::FlashConfigAdapter;
 use crate::adapter::gpio::{Ds18b20TemperatureAdapter, EspInputAdapter, EspOutputAdapter};
 use crate::adapter::logging::MqttLoggingAdapter;
@@ -21,8 +20,8 @@ use crate::domain::controls::actor::{ButtonActor, WaterActor};
 use crate::domain::energy::actor::EnergyActor;
 use crate::domain::energy::protocol::EnergyMessage;
 use crate::domain::controls::protocol::{ButtonMessage, WaterMessage};
-use crate::domain::gpio::actor::{LightActor, TemperatureSensorActor};
-use crate::domain::gpio::protocol::{LightMessage, TemperatureSensorMessage};
+use crate::domain::gpio::actor::{LightingActor, TemperatureSensorActor};
+use crate::domain::gpio::protocol::{LightingMessage, TemperatureSensorMessage};
 use crate::domain::update::actor::UpdateActor;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::domain::weight::actor::WeightActor;
@@ -56,13 +55,13 @@ mod library;
 
 const FAST_TICK_INTERVAL: Duration = Duration::from_millis(200);
 const SLOW_TICK_INTERVAL: Duration = Duration::from_millis(1000);
+const LIGHTING_TICK_INTERVAL: Duration = Duration::from_secs(2);
 
 static BOILER_ACTOR_MAILBOX: EmbassyMailboxImpl<BoilerMessage, 8> = EmbassyMailboxImpl::new();
 static BREW_ACTOR_MAILBOX: EmbassyMailboxImpl<BrewMessage, 8> = EmbassyMailboxImpl::new();
 static BUTTON_ACTOR_MAILBOX: EmbassyMailboxImpl<ButtonMessage, 8> = EmbassyMailboxImpl::new();
 static WATER_ACTOR_MAILBOX: EmbassyMailboxImpl<WaterMessage, 8> = EmbassyMailboxImpl::new();
-static STATUS_LIGHT_ACTOR_MAILBOX: EmbassyMailboxImpl<LightMessage, 1> = EmbassyMailboxImpl::new();
-static POWER_LIGHT_ACTOR_MAILBOX: EmbassyMailboxImpl<LightMessage, 1> = EmbassyMailboxImpl::new();
+static LIGHTING_ACTOR_MAILBOX: EmbassyMailboxImpl<LightingMessage, 8> = EmbassyMailboxImpl::new();
 static TEMPERATURE_SENSOR_ACTOR_MAILBOX: EmbassyMailboxImpl<TemperatureSensorMessage, 1> = EmbassyMailboxImpl::new();
 static UPDATE_ACTOR_MAILBOX: EmbassyMailboxImpl<UpdateMessage, 1> = EmbassyMailboxImpl::new();
 static CONFIG_ACTOR_MAILBOX: EmbassyMailboxImpl<ConfigMessage, 8> = EmbassyMailboxImpl::new();
@@ -127,24 +126,22 @@ async fn main(spawner: Spawner) {
     let brew_actor_ref = BREW_ACTOR_MAILBOX.actor_ref();
     let button_actor_ref = BUTTON_ACTOR_MAILBOX.actor_ref();
     let water_actor_ref = WATER_ACTOR_MAILBOX.actor_ref();
-    let power_light_actor_ref = POWER_LIGHT_ACTOR_MAILBOX.actor_ref();
-    let status_light_actor_ref = STATUS_LIGHT_ACTOR_MAILBOX.actor_ref();
+    let lighting_actor_ref = LIGHTING_ACTOR_MAILBOX.actor_ref();
     let temperature_sensor_actor_ref = TEMPERATURE_SENSOR_ACTOR_MAILBOX.actor_ref();
     let update_actor_ref = UPDATE_ACTOR_MAILBOX.actor_ref();
     let config_actor_ref = CONFIG_ACTOR_MAILBOX.actor_ref();
     let energy_actor_ref = ENERGY_ACTOR_MAILBOX.actor_ref();
     let weight_actor_ref = WEIGHT_ACTOR_MAILBOX.actor_ref();
 
-    let boiler_actor = BoilerActor::new("boiler", boiler_actor_ref.clone(), Arc::clone(&config_adapter), heating_output_adapter, status_light_actor_ref.clone());
+    let boiler_actor = BoilerActor::new("boiler", boiler_actor_ref.clone(), Arc::clone(&config_adapter), heating_output_adapter, lighting_actor_ref.clone());
     let brew_actor = BrewActor::new("brew", pump_output_adapter, valve_output_adapter);
     let button_actor = ButtonActor::new("button", button_actor_ref.clone(), brew_actor_ref.clone(), power_input_adapter, status_input_adapter, update_actor_ref.clone(), energy_actor_ref.clone());
-    let water_actor = WaterActor::new("water", water_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), water_input_adapter, Arc::clone(&logging_adapter));
-    let power_light_actor = LightActor::new("light/power", power_light_output_adapter, EspTimerAdapter::new());
-    let status_light_actor = LightActor::new("light/status", status_light_output_adapter, EspTimerAdapter::new());
+    let water_actor = WaterActor::new("water", water_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), lighting_actor_ref.clone(), water_input_adapter, Arc::clone(&logging_adapter));
+    let lighting_actor = LightingActor::new("lighting", power_light_output_adapter, status_light_output_adapter);
     let temperature_sensor_actor = TemperatureSensorActor::new("temperature", temperature_adapter, Arc::clone(&logging_adapter), Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());
-    let update_actor = UpdateActor::new("update", update_actor_ref.clone(), update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, power_light_actor_ref.clone(), status_light_actor_ref.clone());
+    let update_actor = UpdateActor::new("update", update_actor_ref.clone(), update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, lighting_actor_ref.clone());
     let config_actor = ConfigActor::new("config", Arc::clone(&config_adapter), Arc::clone(&logging_adapter));
-    let energy_actor = EnergyActor::new("energy", energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), power_light_actor_ref.clone(), status_light_actor_ref.clone(), Arc::clone(&logging_adapter));
+    let energy_actor = EnergyActor::new("energy", energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), lighting_actor_ref.clone(), Arc::clone(&logging_adapter));
     let weight_actor = WeightActor::new("weight", weight_adapter, Arc::clone(&logging_adapter), energy_actor_ref.clone(), brew_actor_ref.clone(), Arc::clone(&config_adapter));
 
     DebugImpl::set(Color::Cyan).await;
@@ -156,13 +153,21 @@ async fn main(spawner: Spawner) {
     DebugImpl::set(Color::Blue).await;
 
     let actor_group_1 = join3(BOILER_ACTOR_MAILBOX.run(boiler_actor), BREW_ACTOR_MAILBOX.run(brew_actor), BUTTON_ACTOR_MAILBOX.run(button_actor));
-    let actor_group_2 = join3(WATER_ACTOR_MAILBOX.run(water_actor), POWER_LIGHT_ACTOR_MAILBOX.run(power_light_actor), STATUS_LIGHT_ACTOR_MAILBOX.run(status_light_actor));
+    let actor_group_2 = join(WATER_ACTOR_MAILBOX.run(water_actor), LIGHTING_ACTOR_MAILBOX.run(lighting_actor));
     let actor_group_3 = join3(TEMPERATURE_SENSOR_ACTOR_MAILBOX.run(temperature_sensor_actor), UPDATE_ACTOR_MAILBOX.run(update_actor), WEIGHT_ACTOR_MAILBOX.run(weight_actor));
     let actor_group_4 = join(CONFIG_ACTOR_MAILBOX.run(config_actor), ENERGY_ACTOR_MAILBOX.run(energy_actor));
 
-    let event_loops = join(fast_event_loop(), slow_event_loop());
+    let event_loops = join3(fast_event_loop(), slow_event_loop(), lighting_event_loop());
 
     join3(join(actor_group_1, actor_group_2), join(actor_group_3, actor_group_4), event_loops).await;
+}
+
+async fn lighting_event_loop() {
+    loop {
+        Timer::after(LIGHTING_TICK_INTERVAL).await;
+
+        LIGHTING_ACTOR_MAILBOX.actor_ref().system_tell(LightingMessage::Tick);
+    }
 }
 
 async fn fast_event_loop() {

@@ -1,7 +1,6 @@
 use super::port::{OutputPort, TemperatureSensorPort};
-use super::protocol::{LightMessage, TemperatureSensorMessage, TemperatureSensorResponse};
-
-use crate::domain::clock::port::TimerPort;
+use super::protocol::{LightMode, LightingMessage, TemperatureSensorMessage, TemperatureSensorResponse};
+use super::service::LightService;
 use crate::domain::logging::port::LoggingPort;
 use crate::library::actor::interface::Actor;
 use crate::library::actor::model::Subscriber;
@@ -9,36 +8,67 @@ use crate::library::actor::model::Subscriber;
 use alloc::sync::Arc;
 use heapless::Vec;
 
-pub struct LightActor<P, T> {
+
+pub struct LightingActor<P, S> {
     public_name: &'static str,
 
-    output_port: P,
-    timer_port: T,
+    power_output_port: P,
+    status_output_port: S,
+    power: LightService,
+    status: LightService,
+    phase: bool,
 }
 
-impl<P, T> LightActor<P, T> {
-    pub fn new(public_name: &'static str, output_port: P, timer_port: T) -> Self {
-        Self { output_port, timer_port, public_name }
+impl<P, S> LightingActor<P, S> {
+    pub fn new(public_name: &'static str, power_output_port: P, status_output_port: S) -> Self {
+        let power = LightService::new();
+        let status = LightService::new();
+
+        let phase = true;
+
+        Self { public_name, power_output_port, status_output_port, power, status, phase }
     }
 }
 
-impl<P, T> LightActor<P, T> where P: OutputPort, T: TimerPort {
-    async fn set_active(&mut self, active: bool) {
-        self.output_port.set_active(active).await;
+impl<P, S> LightingActor<P, S> where P: OutputPort, S: OutputPort {
+    fn set_power(&mut self, mode: LightMode) {
+        self.power.set_mode(mode);
     }
 
-    async fn blink_times(&mut self, times: u8) {
-        for _ in 0..(times * 2) {
-            self.output_port.invert_state().await;
-            self.timer_port.wait_for(500).await;
+    fn set_status(&mut self, mode: LightMode) {
+        self.status.set_mode(mode);
+    }
+
+    fn set_both(&mut self, power: LightMode, status: LightMode) {
+        self.power.set_mode(power);
+        self.status.set_mode(status);
+        self.power.cancel_blinks();
+        self.status.cancel_blinks();
+    }
+
+    fn blink_status_times(&mut self, times: u8) {
+        self.status.blink_times(times);
+    }
+
+    fn tick(&mut self) {
+        self.phase ^= true;
+
+        if self.phase {
+            return
         }
 
-        self.timer_port.wait_for(1000).await;
+        self.power.finish_pulse();
+        self.status.finish_pulse();
+    }
+
+    async fn apply_outputs(&mut self) {
+        self.power_output_port.set_active(self.power.active(self.phase)).await;
+        self.status_output_port.set_active(self.status.active(self.phase)).await;
     }
 }
 
-impl<P, T> Actor for LightActor<P, T> where P: OutputPort, T: TimerPort {
-    type Message = LightMessage;
+impl<P, S> Actor for LightingActor<P, S> where P: OutputPort, S: OutputPort {
+    type Message = LightingMessage;
 
     fn name(&self) -> &'static str {
         self.public_name
@@ -46,9 +76,14 @@ impl<P, T> Actor for LightActor<P, T> where P: OutputPort, T: TimerPort {
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            LightMessage::SetActive(active) => self.set_active(active).await,
-            LightMessage::BlinkTimes(times) => self.blink_times(times).await,
+            LightingMessage::SetPower(mode) => self.set_power(mode),
+            LightingMessage::SetStatus(mode) => self.set_status(mode),
+            LightingMessage::SetBoth(power, status) => self.set_both(power, status),
+            LightingMessage::BlinkStatusTimes(times) => self.blink_status_times(times),
+            LightingMessage::Tick => self.tick(),
         }
+
+        self.apply_outputs().await;
     }
 }
 
