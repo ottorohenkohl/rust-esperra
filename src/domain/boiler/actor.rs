@@ -63,6 +63,8 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
 
     fn should_heat(&mut self) -> bool {
         if !self.active || !self.has_valid_temperature() {
+            self.pid_service.reset();
+
             return false;
         }
 
@@ -72,6 +74,8 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         let cycle_elapsed_ms = self.cycle_start.elapsed().as_millis();
 
         if current_temperature < temperature_options.target_temperature - heater_options.boost_interval_size {
+            self.pid_service.reset();
+
             return true;
         }
 
