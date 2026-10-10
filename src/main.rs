@@ -134,7 +134,7 @@ async fn main(spawner: Spawner) {
     let weight_actor_ref = WEIGHT_ACTOR_MAILBOX.actor_ref();
 
     let boiler_actor = BoilerActor::new("boiler", boiler_actor_ref.clone(), Arc::clone(&config_adapter), heating_output_adapter, lighting_actor_ref.clone());
-    let brew_actor = BrewActor::new("brew", pump_output_adapter, valve_output_adapter);
+    let brew_actor = BrewActor::new("brew", boiler_actor_ref.clone(), pump_output_adapter, valve_output_adapter);
     let button_actor = ButtonActor::new("button", button_actor_ref.clone(), brew_actor_ref.clone(), power_input_adapter, status_input_adapter, update_actor_ref.clone(), energy_actor_ref.clone());
     let water_actor = WaterActor::new("water", water_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), lighting_actor_ref.clone(), water_input_adapter, Arc::clone(&logging_adapter));
     let lighting_actor = LightingActor::new("lighting", power_light_output_adapter, status_light_output_adapter);

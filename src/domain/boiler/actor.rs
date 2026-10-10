@@ -23,6 +23,7 @@ pub struct BoilerActor<C, H> {
     current_temperature: Option<f64>,
     last_temperature_update: Option<Instant>,
     active: bool,
+    brewing: bool,
     cycle_start: Instant,
     heating_output_port: H,
     pid_service: PidService<C>,
@@ -38,8 +39,9 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         let last_temperature_update = None;
 
         let active = true;
+        let brewing = false;
 
-        Self { public_name, actor_ref, config_port, current_temperature, last_temperature_update, active, cycle_start, heating_output_port, pid_service, lighting_actor }
+        Self { public_name, actor_ref, config_port, current_temperature, last_temperature_update, active, brewing, cycle_start, heating_output_port, pid_service, lighting_actor }
     }
 
     fn update_cycle(&mut self) {
@@ -73,7 +75,7 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         let temperature_options = self.config_port.read_temperature_options();
         let cycle_elapsed_ms = self.cycle_start.elapsed().as_millis();
 
-        if current_temperature < temperature_options.target_temperature - heater_options.boost_interval_size {
+        if self.brewing || current_temperature < temperature_options.target_temperature - heater_options.boost_interval_size {
             self.pid_service.reset();
 
             return true;
@@ -91,6 +93,11 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn set_brewing(&mut self, active: bool) {
+        self.brewing = active;
+        self.pid_service.reset();
     }
 
     fn update_temperature(&mut self, measured_temperature: f64) {
@@ -132,6 +139,7 @@ impl<C, H> Actor for BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         match message {
             BoilerMessage::InvalidateTemperature => self.invalidate_temperature(),
             BoilerMessage::SetActive(active) => self.set_active(active),
+            BoilerMessage::SetBrewing(active) => self.set_brewing(active),
             BoilerMessage::SwitchHeater => self.switch_heater().await,
             BoilerMessage::UpdateTemperature(measured_temperature) => self.update_temperature(measured_temperature),
         }

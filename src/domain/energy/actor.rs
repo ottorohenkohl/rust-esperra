@@ -33,18 +33,22 @@ impl<L> EnergyActor<L> where L: LoggingPort {
     fn set_active(&mut self, active: bool) {
         if active {
             self.last_activity = Some(Instant::now());
+
             self.boiler_actor.unlock(&self.actor_ref);
             self.brew_actor.unlock(&self.actor_ref);
             self.lighting_actor.unlock(&self.actor_ref);
+
             self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(true));
 
             return
         }
 
         self.last_activity = None;
+
         self.boiler_actor.lock(&self.actor_ref);
         self.brew_actor.lock(&self.actor_ref);
         self.lighting_actor.lock(&self.actor_ref);
+
         self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
         self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
 

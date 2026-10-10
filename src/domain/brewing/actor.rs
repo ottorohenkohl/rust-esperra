@@ -1,22 +1,27 @@
+use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::gpio::port::OutputPort;
 use crate::library::actor::interface::Actor;
+use crate::library::actor::model::ActorRef;
 
 pub struct BrewActor<P, V> {
     public_name: &'static str,
 
+    boiler_actor: ActorRef<BoilerMessage>,
     pump_output_port: P,
     valve_output_port: V,
 }
 
 impl<P, V> BrewActor<P, V> where P: OutputPort, V: OutputPort {
-    pub fn new(public_name: &'static str, pump_output_port: P, valve_output_port: V) -> Self {
-        Self { public_name, pump_output_port, valve_output_port }
+    pub fn new(public_name: &'static str, boiler_actor: ActorRef<BoilerMessage>, pump_output_port: P, valve_output_port: V) -> Self {
+        Self { public_name, boiler_actor, pump_output_port, valve_output_port }
     }
 
     async fn set_brewing(&mut self, active: bool) {
         self.pump_output_port.set_active(active).await;
         self.valve_output_port.set_active(active).await;
+
+        self.boiler_actor.system_tell(BoilerMessage::SetBrewing(active));
     }
 }
 

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum BoilerMessage {
     InvalidateTemperature,
     SetActive(bool),
+    SetBrewing(bool),
     SwitchHeater,
     UpdateTemperature(f64),
 }
