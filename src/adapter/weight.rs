@@ -1,3 +1,4 @@
+
 use crate::domain::weight::port::{ConnectionState, WeightPort};
 use crate::library::bluetooth::implementation::BluetoothClient;
 use crate::library::bluetooth::protocol::{BluetoothConnectionState, BluetoothProfile};
@@ -7,6 +8,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
 const BOOKOO_AUTOMATIC_MODE_PACKET_TYPE: u8 = 0x0d;
+const BOOKOO_EVENT_UUID: u16 = 0xff12;
 const BOOKOO_PACKET_LENGTH: usize = 20;
 const BOOKOO_READY_EVENT: u8 = 0x02;
 const BOOKOO_SERVICE_UUID: u16 = 0x0ffe;
@@ -19,7 +21,7 @@ const BOOKOO_PROFILE: BluetoothProfile = BluetoothProfile {
     advertisement_service_uuid: BOOKOO_SERVICE_UUID,
     advertisement_name_prefix: BOOKOO_ADVERTISEMENT_NAME,
     service_uuid: BOOKOO_SERVICE_UUID,
-    notification_uuid: BOOKOO_WEIGHT_UUID,
+    notification_uuids: [BOOKOO_WEIGHT_UUID, BOOKOO_EVENT_UUID],
 };
 
 static LATEST_WEIGHT: Mutex<CriticalSectionRawMutex, f64> = Mutex::new(0.0);
@@ -106,16 +108,20 @@ async fn bookoo_notification_task(bluetooth: BluetoothClient) {
     loop {
         let notification = bluetooth.receive_notification().await;
 
-        if notification.characteristic_uuid != BOOKOO_WEIGHT_UUID {
-            continue
-        }
-
         let packet = notification.payload.as_slice();
 
-        if let Some(weight) = parse_weight_packet(packet) {
-            *LATEST_WEIGHT.lock().await = weight;
-        } else if is_ready_event(packet) {
-            *READY_STATE.lock().await = true;
+        match notification.characteristic_uuid {
+            BOOKOO_WEIGHT_UUID => {
+                if let Some(weight) = parse_weight_packet(packet) {
+                    *LATEST_WEIGHT.lock().await = weight;
+                }
+            },
+            BOOKOO_EVENT_UUID => {
+                if is_ready_event(packet) {
+                    *READY_STATE.lock().await = true;
+                }
+            },
+            _ => {},
         }
     }
 }

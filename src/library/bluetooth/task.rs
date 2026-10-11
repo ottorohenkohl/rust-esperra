@@ -3,7 +3,7 @@ use super::protocol::{BluetoothCommand, BluetoothConnectionState, BluetoothNotif
 use super::implementation::{COMMANDS, CONNECTION_RESULT, NOTIFICATIONS};
 
 use core::cell::RefCell;
-use embassy_futures::select::Either;
+use embassy_futures::select::Either3;
 use embassy_time::{with_timeout, Duration};
 use esp_hal::rng::Rng;
 use esp_radio::ble::controller::BleConnector;
@@ -149,13 +149,15 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
                 let discovery = async {
                     let services = client.services_by_uuid(&Uuid::new_short(profile.service_uuid)).await.ok()?;
                     let service = services.first()?;
-                    let notification_characteristic = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(profile.notification_uuid)).await.ok()?;
-                    let notifications = client.subscribe(&notification_characteristic, false).await.ok()?;
+                    let first_characteristic = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(profile.notification_uuids[0])).await.ok()?;
+                    let second_characteristic = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(profile.notification_uuids[1])).await.ok()?;
+                    let first_notifications = client.subscribe(&first_characteristic, false).await.ok()?;
+                    let second_notifications = client.subscribe(&second_characteristic, false).await.ok()?;
 
-                    Some(notifications)
+                    Some((first_notifications, second_notifications))
                 };
 
-                let Ok(Some(mut notifications)) = with_timeout(GATT_TIMEOUT, discovery).await else {
+                let Ok(Some((mut first_notifications, mut second_notifications))) = with_timeout(GATT_TIMEOUT, discovery).await else {
                     CONNECTION_RESULT.signal(BluetoothConnectionState::ConnectionFailed);
 
                     return
@@ -164,13 +166,18 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
                 CONNECTION_RESULT.signal(BluetoothConnectionState::ConnectionEstablished);
 
                 loop {
-                    match select(notifications.next(), COMMANDS.receive()).await {
-                        Either::First(notification) => {
-                            if let Ok(payload) = Vec::<u8, 64>::from_slice(notification.as_ref()) {
-                                let _ = NOTIFICATIONS.try_send(BluetoothNotification { characteristic_uuid: profile.notification_uuid, payload });
-                            }
+                    let (characteristic_uuid, notification) = match select3(first_notifications.next(), second_notifications.next(), COMMANDS.receive()).await {
+                        Either3::First(notification) => (profile.notification_uuids[0], notification),
+                        Either3::Second(notification) => (profile.notification_uuids[1], notification),
+                        Either3::Third(BluetoothCommand::Connect(_)) => {
+                            CONNECTION_RESULT.signal(BluetoothConnectionState::AlreadyConnected);
+
+                            continue
                         },
-                        Either::Second(BluetoothCommand::Connect(_)) => CONNECTION_RESULT.signal(BluetoothConnectionState::AlreadyConnected),
+                    };
+
+                    if let Ok(payload) = Vec::<u8, 64>::from_slice(notification.as_ref()) {
+                        let _ = NOTIFICATIONS.try_send(BluetoothNotification { characteristic_uuid, payload });
                     }
                 }
             };

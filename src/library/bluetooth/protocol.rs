@@ -24,5 +24,5 @@ pub struct BluetoothProfile {
     pub advertisement_name_prefix: &'static str,
     pub advertisement_service_uuid: u16,
     pub service_uuid: u16,
-    pub notification_uuid: u16,
+    pub notification_uuids: [u16; 2],
 }
