@@ -16,7 +16,7 @@
 - Persistente Laufzeitkonfiguration im Flash
 - MQTT 5 über TLS für Steuerung und Telemetrie
 - HTTPS-OTA mit semantischem Versionsvergleich und Bootloader-Rollback
-- GitLab-CI-Pipeline für Bootloader, Recovery-Image, OTA-Image und Releases
+- GitLab-CI-Pipeline für OTA-Image und Releases
 
 ## Zielhardware
 
@@ -155,7 +155,11 @@ Der konfigurierte Runner flasht die Anwendung mit 8-MB-Layout und öffnet anschl
 
 ### Erstinstallation oder Wiederherstellung
 
-Für ein neues Gerät wird das zusammengeführte `firmware.bin` aus dem GitLab-CI-Job `build:firmware` empfohlen. Es enthält Bootloader, Partitionstabelle und Factory-Anwendung.
+Für ein neues Gerät muss `firmware.bin` lokal gebaut werden. Das vollständige Image enthält Bootloader, Partitionstabelle und Factory-Anwendung und darf mit eingebetteten Zugangsdaten nicht veröffentlicht werden. Nach dem lokalen Firmware- und Bootloader-Build lässt es sich so erzeugen:
+
+```bash
+espflash save-image --chip esp32s3 --flash-size 8mb --bootloader boot/build/bootloader/bootloader.bin --partition-table res/partitions.csv --target-app-partition factory --merge target/xtensa-esp32s3-none-elf/release/esperra firmware.bin
+```
 
 ```bash
 espflash flash --format raw firmware.bin /dev/tty.usbmodemXXXX
@@ -238,11 +242,10 @@ Während des Downloads blinken beide Leuchten im Abstand von 500 ms. Die Partiti
 
 ## GitLab CI und Releases
 
-Die Pipeline in `.gitlab-ci.yml` führt drei Stufen aus:
+Die Pipeline in `.gitlab-ci.yml` führt zwei Stufen aus:
 
-1. `build:bootloader` erstellt mit ESP-IDF 5.5.2 einen Bootloader mit aktiviertem App-Rollback.
-2. `build:firmware` baut die Release-Firmware und erzeugt `firmware.bin` sowie `firmware-ota.bin`.
-3. `release:firmware` veröffentlicht bei Tags im Format `vMAJOR.MINOR.PATCH` das OTA-Image in der Generic Package Registry.
+1. `build:firmware` baut die Release-Firmware und veröffentlicht ausschließlich `firmware-ota.bin` als Job-Artefakt. Ein Bootloader oder vollständiges Factory-Image wird in CI nicht erzeugt.
+2. `release:firmware` veröffentlicht bei Tags im Format `vMAJOR.MINOR.PATCH` das OTA-Image in der Generic Package Registry.
 
 Vor einem Release müssen Paketversion und Tag übereinstimmen:
 
@@ -252,7 +255,7 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-Der Release-Job veröffentlicht die versionierte Datei und ersetzt zusätzlich `latest/firmware-ota.bin`. In GitLab sollten WLAN-, MQTT- und sonstige Zugangsdaten als geschützte CI/CD-Variablen gepflegt werden.
+Der Release-Job veröffentlicht die versionierte Datei und ersetzt zusätzlich `latest/firmware-ota.bin`. WLAN- und MQTT-Passwörter dürfen nicht als CI/CD-Variablen hinterlegt werden: Auch OTA-Images enthalten sonst die zur Compile-Zeit eingebetteten Werte. Sind `ESPERRA_WIFI_PASSWORD` und `ESPERRA_MQTT_PASSWORD` weder im Projekt noch als geerbte Gruppenvariablen gesetzt, verwendet die Firmware die leeren Defaults. Geräte müssen bereits lokal provisioniert sein; OTA-Updates behalten die bestehende `config`-Partition bei.
 
 ## Projektstruktur
 
