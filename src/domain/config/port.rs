@@ -24,6 +24,13 @@ pub struct WeightOptions {
     pub double_shot_weight: f64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct PreinfusionOptions {
+    pub enabled: bool,
+    pub pump_ms: u32,
+    pub pause_ms: u32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct PidGains {
     pub k_proportional: f64,
@@ -57,6 +64,7 @@ pub trait ReadConfigPort {
     fn read_firmware_info(&self) -> FirmwareInfo;
     fn read_network_info(&self) -> NetworkInfo;
     fn read_weight_options(&self) -> WeightOptions;
+    fn read_preinfusion_options(&self) -> PreinfusionOptions;
 }
 
 pub trait WriteConfigPort {
@@ -66,4 +74,5 @@ pub trait WriteConfigPort {
     async fn write_firmware_info(&self, info: FirmwareInfo);
     async fn write_network_info(&self, info: NetworkInfo);
     async fn write_weight_options(&self, options: WeightOptions);
+    async fn write_preinfusion_options(&self, options: PreinfusionOptions);
 }

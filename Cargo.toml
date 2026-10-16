@@ -2,7 +2,7 @@
 edition      = "2024"
 name         = "esperra"
 rust-version = "1.91"
-version      = "1.2.7"
+version      = "1.2.8"
 
 [[bin]]
 name = "esperra"

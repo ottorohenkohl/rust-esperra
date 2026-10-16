@@ -1,4 +1,4 @@
-use super::port::{HeaterOptions, NetworkInfo, PidGains, ReadConfigPort, TemperatureOptions, WeightOptions, WriteConfigPort};
+use super::port::{HeaterOptions, NetworkInfo, PidGains, PreinfusionOptions, ReadConfigPort, TemperatureOptions, WeightOptions, WriteConfigPort};
 use super::protocol::{ConfigMessage, ConfigResponse};
 
 use crate::domain::logging::port::LoggingPort;
@@ -41,6 +41,14 @@ impl<C, L> ConfigActor<C, L> where C: ReadConfigPort + WriteConfigPort, L: Loggi
         self.config_port.write_weight_options(options).await;
     }
 
+    async fn update_preinfusion_options(&self, options: PreinfusionOptions) {
+        self.config_port.write_preinfusion_options(options).await;
+    }
+
+    fn log_preinfusion_options(&self) {
+        self.logging_port.log(self, Some("preinfusion_options"), &ConfigResponse::PreinfusionOptions(self.config_port.read_preinfusion_options()));
+    }
+
     fn log_heater_options(&self) {
         self.logging_port.log(self, Some("heater_options"), &ConfigResponse::HeaterOptions(self.config_port.read_heater_options()));
     }
@@ -80,6 +88,7 @@ impl<C, L> Actor for ConfigActor<C, L> where C: ReadConfigPort + WriteConfigPort
             ConfigMessage::UpdatePidGains(gains) => self.update_pid_gains(gains).await,
             ConfigMessage::UpdateNetworkInfo(info) => self.update_network_info(info).await,
             ConfigMessage::UpdateWeightOptions(options) => self.update_weight_options(options).await,
+            ConfigMessage::UpdatePreinfusionOptions(options) => self.update_preinfusion_options(options).await,
 
             ConfigMessage::LogHeaterOptions => self.log_heater_options(),
             ConfigMessage::LogTemperatureOptions => self.log_temperature_options(),
@@ -87,6 +96,7 @@ impl<C, L> Actor for ConfigActor<C, L> where C: ReadConfigPort + WriteConfigPort
             ConfigMessage::LogFirmwareInfo => self.log_firmware_info(),
             ConfigMessage::LogNetworkInfo => self.log_network_info(),
             ConfigMessage::LogWeightOptions => self.log_weight_options(),
+            ConfigMessage::LogPreinfusionOptions => self.log_preinfusion_options(),
         }
     }
 }

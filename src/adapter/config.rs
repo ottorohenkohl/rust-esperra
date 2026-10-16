@@ -1,4 +1,4 @@
-use crate::domain::config::port::{ConfigError, ReadConfigPort, WriteConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, TemperatureOptions, WeightOptions};
+use crate::domain::config::port::{ConfigError, ReadConfigPort, WriteConfigPort, FirmwareInfo, HeaterOptions, NetworkInfo, PidGains, PreinfusionOptions, TemperatureOptions, WeightOptions};
 
 use alloc::sync::Arc;
 use core::cell::RefCell;
@@ -27,6 +27,7 @@ struct ConfigState {
     network_info: NetworkInfo,
     pid_gains: PidGains,
     weight_options: WeightOptions,
+    preinfusion_options: PreinfusionOptions,
 }
 
 impl ConfigState {
@@ -53,6 +54,9 @@ impl ConfigState {
         FlashConfigAdapter::write_string(&mut record, 702, &self.network_info.mqtt_client_id);
         FlashConfigAdapter::write_string(&mut record, 766, &self.network_info.mqtt_topic_prefix);
         FlashConfigAdapter::write_f64(&mut record, 830, self.weight_options.double_shot_weight);
+        FlashConfigAdapter::write_bool(&mut record, 838, self.preinfusion_options.enabled);
+        FlashConfigAdapter::write_u32(&mut record, 839, self.preinfusion_options.pump_ms);
+        FlashConfigAdapter::write_u32(&mut record, 843, self.preinfusion_options.pause_ms);
 
         record
     }
@@ -103,6 +107,11 @@ impl FlashConfigAdapter {
                 weight_options: WeightOptions {
                     double_shot_weight: Self::read_f64(&record, 830),
                 },
+                preinfusion_options: PreinfusionOptions {
+                    enabled: Self::read_bool(&record, 838),
+                    pump_ms: Self::read_u32(&record, 839),
+                    pause_ms: Self::read_u32(&record, 843),
+                },
             }
         } else {
             let state = ConfigState {
@@ -112,6 +121,7 @@ impl FlashConfigAdapter {
                 network_info: Self::default_network_info(),
                 pid_gains: Self::default_pid_gains(),
                 weight_options: Self::default_weight_options(),
+                preinfusion_options: Self::default_preinfusion_options(),
             };
 
             storage.write(CONFIG_STORAGE_OFFSET, &state.record()).map_err(|_| ConfigError::StorageWriteFailed)?;
@@ -132,9 +142,16 @@ impl FlashConfigAdapter {
         let _ = storage.write(CONFIG_STORAGE_OFFSET, &record);
     }
 
+    fn read_bool(record: &[u8; RECORD_SIZE], offset: usize) -> bool {
+        record[offset] == 1
+    }
 
     fn read_u16(record: &[u8; RECORD_SIZE], offset: usize) -> u16 {
         u16::from_le_bytes(record[offset..offset + 2].try_into().unwrap())
+    }
+
+    fn read_u32(record: &[u8; RECORD_SIZE], offset: usize) -> u32 {
+        u32::from_le_bytes(record[offset..offset + 4].try_into().unwrap())
     }
 
     fn read_u64(record: &[u8; RECORD_SIZE], offset: usize) -> u64 {
@@ -152,9 +169,16 @@ impl FlashConfigAdapter {
         from_utf8(&bytes[..length]).ok().and_then(|value| String::try_from(value).ok()).unwrap_or_default()
     }
 
+    fn write_bool(record: &mut [u8; RECORD_SIZE], offset: usize, value: bool) {
+        record[offset] = u8::from(value);
+    }
 
     fn write_u16(record: &mut [u8; RECORD_SIZE], offset: usize, value: u16) {
         record[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn write_u32(record: &mut [u8; RECORD_SIZE], offset: usize, value: u32) {
+        record[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
 
     fn write_u64(record: &mut [u8; RECORD_SIZE], offset: usize, value: u64) {
@@ -187,6 +211,14 @@ impl FlashConfigAdapter {
         let double_shot_weight = option_env!("ESPERRA_WEIGHT_OPTIONS_DOUBLE_SHOT_WEIGHT").unwrap_or("50.0").parse().unwrap();
 
         WeightOptions { double_shot_weight }
+    }
+
+    fn default_preinfusion_options() -> PreinfusionOptions {
+        let enabled = option_env!("ESPERRA_PREINFUSION_OPTIONS_ENABLED").unwrap_or("false").parse().unwrap();
+        let pump_ms = option_env!("ESPERRA_PREINFUSION_OPTIONS_PUMP_MS").unwrap_or("2000").parse().unwrap();
+        let pause_ms = option_env!("ESPERRA_PREINFUSION_OPTIONS_PAUSE_MS").unwrap_or("3000").parse().unwrap();
+
+        PreinfusionOptions { enabled, pump_ms, pause_ms }
     }
 
     fn default_pid_gains() -> PidGains {
@@ -225,6 +257,10 @@ impl FlashConfigAdapter {
 }
 
 impl ReadConfigPort for FlashConfigAdapter {
+    fn read_preinfusion_options(&self) -> PreinfusionOptions {
+        critical_section::with(|cs| self.state.borrow_ref(cs).preinfusion_options)
+    }
+
     fn read_heater_options(&self) -> HeaterOptions {
         critical_section::with(|cs| self.state.borrow_ref(cs).heater_options)
     }
@@ -251,6 +287,17 @@ impl ReadConfigPort for FlashConfigAdapter {
 }
 
 impl WriteConfigPort for FlashConfigAdapter {
+    async fn write_preinfusion_options(&self, options: PreinfusionOptions) {
+        let record = critical_section::with(|cs| {
+            let mut state = self.state.borrow_ref_mut(cs);
+
+            state.preinfusion_options = options;
+
+            state.record()
+        });
+
+        self.persist(record).await;
+    }
     async fn write_heater_options(&self, options: HeaterOptions) {
         let record = critical_section::with(|cs| {
             let mut state = self.state.borrow_ref_mut(cs);
