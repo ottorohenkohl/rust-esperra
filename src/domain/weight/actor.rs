@@ -50,6 +50,10 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
         }
     }
 
+    async fn shutdown(&mut self) {
+        self.weight_port.shutdown().await;
+    }
+
     async fn monitor_weight(&mut self) {
         if self.is_connection_failed().await {
             return
@@ -77,6 +81,7 @@ impl<P, L, C> Actor for WeightActor<P, L, C> where P: WeightPort, L: LoggingPort
     async fn handle(&mut self, message: Self::Message) {
         match message {
             WeightMessage::MonitorWeight => self.monitor_weight().await,
+            WeightMessage::Shutdown => self.shutdown().await,
         }
     }
 }

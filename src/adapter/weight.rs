@@ -9,6 +9,7 @@ use embassy_sync::mutex::Mutex;
 
 const BOOKOO_AUTOMATIC_MODE_PACKET_TYPE: u8 = 0x0d;
 const BOOKOO_EVENT_UUID: u16 = 0xff12;
+const BOOKOO_SHUTDOWN_COMMAND: [u8; 6] = [0x03, 0x0a, 0x15, 0x00, 0x00, 0x1c];
 const BOOKOO_PACKET_LENGTH: usize = 20;
 const BOOKOO_READY_EVENT: u8 = 0x02;
 const BOOKOO_SERVICE_UUID: u16 = 0x0ffe;
@@ -51,6 +52,10 @@ impl WeightPort for BookooWeightAdapter {
             },
             BluetoothConnectionState::ConnectionFailed => ConnectionState::ConnectionFailed,
         }
+    }
+
+    async fn shutdown(&mut self) {
+        self.bluetooth.write(BOOKOO_EVENT_UUID, &BOOKOO_SHUTDOWN_COMMAND).await;
     }
 
     async fn reset_ready_state(&mut self) {

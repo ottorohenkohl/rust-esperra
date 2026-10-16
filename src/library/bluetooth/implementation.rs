@@ -25,6 +25,12 @@ impl BluetoothClient {
         CONNECTION_RESULT.wait().await
     }
 
+    pub async fn write(&self, characteristic_uuid: u16, payload: &[u8]) {
+        if let Ok(payload) = heapless::Vec::from_slice(payload) {
+            COMMANDS.send(BluetoothCommand::Write(characteristic_uuid, payload)).await;
+        }
+    }
+
     pub async fn receive_notification(&self) -> BluetoothNotification {
         NOTIFICATIONS.receive().await
     }

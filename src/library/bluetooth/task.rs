@@ -95,6 +95,7 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
             let profile = loop {
                 match COMMANDS.receive().await {
                     BluetoothCommand::Connect(profile) => break profile,
+                    BluetoothCommand::Write(..) => {},
                 }
             };
 
@@ -174,6 +175,21 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
 
                             continue
                         },
+                        Either3::Third(BluetoothCommand::Write(characteristic_uuid, payload)) => {
+                            let write = async {
+                                let services = client.services_by_uuid(&Uuid::new_short(profile.service_uuid)).await.ok()?;
+                                let service = services.first()?;
+                                let characteristic = client.characteristic_by_uuid::<[u8]>(service, &Uuid::new_short(characteristic_uuid)).await.ok()?;
+
+                                client.write_characteristic(&characteristic, payload.as_slice()).await.ok()
+                            };
+
+                            if !matches!(with_timeout(GATT_TIMEOUT, write).await, Ok(Some(()))) {
+                                log::warn!("Bluetooth write failed");
+                            }
+
+                            continue
+                        },
                     };
 
                     if let Ok(payload) = Vec::<u8, 64>::from_slice(notification.as_ref()) {
@@ -199,6 +215,7 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
     loop {
         match COMMANDS.receive().await {
             BluetoothCommand::Connect(_) => CONNECTION_RESULT.signal(BluetoothConnectionState::ConnectionFailed),
+            BluetoothCommand::Write(..) => {},
         }
     }
 }

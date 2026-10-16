@@ -4,6 +4,7 @@ use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::gpio::protocol::{LightMode, LightingMessage};
 use crate::domain::logging::port::LoggingPort;
+use crate::domain::weight::protocol::WeightMessage;
 use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
 
@@ -19,15 +20,16 @@ pub struct EnergyActor<L> {
     boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
     lighting_actor: ActorRef<LightingMessage>,
+    weight_actor: ActorRef<WeightMessage>,
     logging_port: Arc<L>,
     last_activity: Option<Instant>,
 }
 
 impl<L> EnergyActor<L> where L: LoggingPort {
-    pub fn new(public_name: &'static str, actor_ref: ActorRef<EnergyMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, lighting_actor: ActorRef<LightingMessage>, logging_port: Arc<L>) -> Self {
+    pub fn new(public_name: &'static str, actor_ref: ActorRef<EnergyMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, lighting_actor: ActorRef<LightingMessage>, weight_actor: ActorRef<WeightMessage>, logging_port: Arc<L>) -> Self {
         let last_activity = Some(Instant::now());
 
-        Self { public_name, actor_ref, boiler_actor, brew_actor, lighting_actor, logging_port, last_activity }
+        Self { public_name, actor_ref, boiler_actor, brew_actor, lighting_actor, weight_actor, logging_port, last_activity }
     }
 
     fn set_active(&mut self, active: bool) {
@@ -51,6 +53,7 @@ impl<L> EnergyActor<L> where L: LoggingPort {
 
         self.boiler_actor.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
         self.brew_actor.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
+        self.weight_actor.tell(Some(&self.actor_ref), WeightMessage::Shutdown);
 
         self.switch_lights_off();
     }

@@ -1589,7 +1589,7 @@ dependencies = [
 
 [[package]]
 name = "esperra"
-version = "1.2.8"
+version = "1.2.9"
 dependencies = [
  "critical-section",
  "embassy-executor",

@@ -141,7 +141,7 @@ async fn main(spawner: Spawner) {
     let temperature_sensor_actor = TemperatureSensorActor::new("temperature", temperature_adapter, Arc::clone(&logging_adapter), Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());
     let update_actor = UpdateActor::new("update", update_actor_ref.clone(), update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, lighting_actor_ref.clone());
     let config_actor = ConfigActor::new("config", Arc::clone(&config_adapter), Arc::clone(&logging_adapter));
-    let energy_actor = EnergyActor::new("energy", energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), lighting_actor_ref.clone(), Arc::clone(&logging_adapter));
+    let energy_actor = EnergyActor::new("energy", energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), lighting_actor_ref.clone(), weight_actor_ref.clone(), Arc::clone(&logging_adapter));
     let weight_actor = WeightActor::new("weight", weight_adapter, Arc::clone(&logging_adapter), energy_actor_ref.clone(), brew_actor_ref.clone(), Arc::clone(&config_adapter));
 
     DebugImpl::set(Color::Cyan).await;

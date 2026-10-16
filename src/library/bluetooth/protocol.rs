@@ -11,6 +11,7 @@ pub enum BluetoothConnectionState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BluetoothCommand {
     Connect(BluetoothProfile),
+    Write(u16, Vec<u8, 64>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -22,6 +23,7 @@ pub struct BluetoothNotification {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BluetoothProfile {
     pub advertisement_name_prefix: &'static str,
+
     pub advertisement_service_uuid: u16,
     pub service_uuid: u16,
     pub notification_uuids: [u16; 2],
