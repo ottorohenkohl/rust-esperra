@@ -296,7 +296,11 @@ cargo build --release
 Der CleaningActor wartet auf ausreichend Wasser und 125 Grad Celsius (maximal
 20 Minuten), dann schaltet er fuenfmal Pumpe und Bruehventil fuer 10 Sekunden
 ein und fuer 10 Sekunden aus, ohne Preinfusion. Der Sollwert wird nur temporaer
-uebersteuert; anschliessend gilt wieder die unveraenderte Konfiguration.
+ueber den ConfigActor auf 125 Grad gesetzt; der CleaningActor merkt sich den
+vorherigen Sollwert und stellt ihn bei Abschluss oder Abbruch wieder her.
+Beide Aenderungen werden wie normale Konfigurationsupdates im Flash gespeichert.
+Bei Stromausfall oder Reset vor der Wiederherstellung bleibt der Reinigungssollwert
+gespeichert.
 Temperaturmessung und Wasserueberwachung bleiben aktiv. Wassermangel oder
 ungueltige/veraltete Temperatur waehrend der Zyklen beenden den Block.
 

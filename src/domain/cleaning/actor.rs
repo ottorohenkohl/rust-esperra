@@ -1,12 +1,14 @@
 use super::protocol::CleaningMessage;
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
+use crate::domain::config::port::{ReadConfigPort, TemperatureOptions};
 use crate::domain::config::protocol::ConfigMessage;
 use crate::domain::controls::protocol::ButtonMessage;
 use crate::domain::energy::protocol::EnergyMessage;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::interface::Actor;
 use crate::library::actor::model::ActorRef;
+use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_time::{Duration, Instant};
 
@@ -34,7 +36,9 @@ enum Phase {
     Cycling { deadline: Instant, pump_active: bool, completed: u8 },
 }
 
-pub struct CleaningActor {
+pub struct CleaningActor<C> {
+    config_port: Arc<C>,
+    previous_temperature_options: Option<TemperatureOptions>,
     actor_ref: ActorRef<CleaningMessage>,
     boiler: ActorRef<BoilerMessage>,
     brew: ActorRef<BrewMessage>,
@@ -46,9 +50,9 @@ pub struct CleaningActor {
     phase: Phase,
 }
 
-impl CleaningActor {
-    pub fn new(actor_ref: ActorRef<CleaningMessage>, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, button: ActorRef<ButtonMessage>, energy: ActorRef<EnergyMessage>, config: ActorRef<ConfigMessage>, update: ActorRef<UpdateMessage>) -> Self {
-        Self { actor_ref, boiler, brew, button, energy, config, update, temperature: None, phase: Phase::Idle }
+impl<C: ReadConfigPort> CleaningActor<C> {
+    pub fn new(config_port: Arc<C>, actor_ref: ActorRef<CleaningMessage>, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, button: ActorRef<ButtonMessage>, energy: ActorRef<EnergyMessage>, config: ActorRef<ConfigMessage>, update: ActorRef<UpdateMessage>) -> Self {
+        Self { config_port, previous_temperature_options: None, actor_ref, boiler, brew, button, energy, config, update, temperature: None, phase: Phase::Idle }
     }
 
     fn release_locks(&self) {
@@ -84,15 +88,17 @@ impl CleaningActor {
 
         CLEANING_IN_PROGRESS.store(true, Ordering::Release);
         self.brew.tell(Some(&self.actor_ref), BrewMessage::SetCleaningPump(false));
-        self.boiler.tell(Some(&self.actor_ref), BoilerMessage::SetCleaningTemperature(Some(CLEANING_TEMPERATURE)));
+        self.previous_temperature_options = Some(self.config_port.read_temperature_options());
+        self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(TemperatureOptions { target_temperature: CLEANING_TEMPERATURE }));
         self.boiler.tell(Some(&self.actor_ref), BoilerMessage::SetActive(false));
         self.phase = Phase::Preparing(Instant::now());
     }
 
     fn finish(&mut self) {
         self.brew.tell(Some(&self.actor_ref), BrewMessage::SetCleaningPump(false));
-        // Removing the override restores the unchanged configured setpoint.
-        self.boiler.tell(Some(&self.actor_ref), BoilerMessage::SetCleaningTemperature(None));
+        if let Some(options) = self.previous_temperature_options.take() {
+            self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(options));
+        }
         self.phase = Phase::Idle;
         self.release_locks();
         CLEANING_IN_PROGRESS.store(false, Ordering::Release);
@@ -142,7 +148,7 @@ impl CleaningActor {
     }
 }
 
-impl Actor for CleaningActor {
+impl<C: ReadConfigPort> Actor for CleaningActor<C> {
     type Message = CleaningMessage;
 
     fn name(&self) -> &'static str {
