@@ -1,7 +1,6 @@
 use super::protocol::{ButtonMessage, WaterMessage, WaterResponse};
 
 use crate::domain::cleaning::protocol::CleaningMessage;
-
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::energy::protocol::EnergyMessage;
@@ -108,19 +107,20 @@ impl<P, S> Actor for ButtonActor<P, S> where P: InputPort, S: InputPort {
 }
 
 pub struct WaterActor<W, L> {
+    public_name: &'static str,
+
     actor_ref: ActorRef<WaterMessage>,
     boiler_actor: ActorRef<BoilerMessage>,
     brew_actor: ActorRef<BrewMessage>,
     lighting_actor: ActorRef<LightingMessage>,
     water_input_port: W,
     cleaning_actor: ActorRef<CleaningMessage>,
-    public_name: &'static str,
     logging_port: Arc<L>,
 }
 
 impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
     pub fn new(public_name: &'static str, actor_ref: ActorRef<WaterMessage>, boiler_actor: ActorRef<BoilerMessage>, brew_actor: ActorRef<BrewMessage>, lighting_actor: ActorRef<LightingMessage>, water_input_port: W, cleaning_actor: ActorRef<CleaningMessage>, logging_port: Arc<L>) -> Self {
-        Self { actor_ref, boiler_actor, brew_actor, lighting_actor, water_input_port, cleaning_actor, public_name, logging_port }
+        Self { public_name, actor_ref, boiler_actor, brew_actor, lighting_actor, water_input_port, cleaning_actor, logging_port }
     }
 
     fn handle_water_input(&self) {

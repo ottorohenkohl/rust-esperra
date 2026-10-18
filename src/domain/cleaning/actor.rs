@@ -60,8 +60,9 @@ impl<C: ReadConfigPort> CleaningActor<C> {
             && self.update.lock(&self.actor_ref);
 
         if locked {
-            self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
             self.previous_temperature_options = Some(self.config_port.read_temperature_options());
+
+            self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
             self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(TemperatureOptions { target_temperature: CLEANING_TEMPERATURE }));
 
             return;
@@ -83,7 +84,9 @@ impl<C: ReadConfigPort> CleaningActor<C> {
 
         self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
         self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(options));
+
         self.next_step = None;
+
         self.release_locks();
     }
 
