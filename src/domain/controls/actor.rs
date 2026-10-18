@@ -124,6 +124,10 @@ impl<W, L> WaterActor<W, L> where W: InputPort, L: LoggingPort {
         let enough_water = self.water_input_port.powered_state();
 
         self.logging_port.log(self, None, &WaterResponse::EnoughWater(enough_water));
+        crate::domain::cleaning::actor::set_enough_water(enough_water);
+        if crate::domain::cleaning::actor::cleaning_in_progress() {
+            return;
+        }
 
         if enough_water {
             self.boiler_actor.unlock(&self.actor_ref);

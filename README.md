@@ -183,6 +183,7 @@ Bei einem Topic-Präfix `esperra` werden folgende Kommandokanäle abonniert:
 | --- | --- | --- |
 | `esperra/in/boiler` | `BoilerMessage` | `{"SetActive":true}` |
 | `esperra/in/brew` | `BrewMessage` | `{"SetBrewing":true}` |
+| `esperra/in/cleaning` | `CleaningMessage` | `"Start"` |
 | `esperra/in/update` | `UpdateMessage` | `"Start"` |
 | `esperra/in/config` | `ConfigMessage` | `{"UpdateTemperatureOptions":{"target_temperature":93.0}}` |
 | `esperra/in/energy` | `EnergyMessage` | `{"SetActive":true}` |
@@ -288,3 +289,17 @@ Der Release-Job veröffentlicht die versionierte Datei und ersetzt zusätzlich `
 cargo fmt --all -- --check
 cargo build --release
 ```
+
+## Reinigungsblock
+
+`"Start"` auf `<praefix>/in/cleaning` startet einen einzelnen Rueckspuelblock.
+Der CleaningActor wartet auf ausreichend Wasser und 125 Grad Celsius (maximal
+20 Minuten), dann schaltet er fuenfmal Pumpe und Bruehventil fuer 10 Sekunden
+ein und fuer 10 Sekunden aus, ohne Preinfusion. Der Sollwert wird nur temporaer
+uebersteuert; anschliessend gilt wieder die unveraenderte Konfiguration.
+Temperaturmessung und Wasserueberwachung bleiben aktiv. Wassermangel oder
+ungueltige/veraltete Temperatur waehrend der Zyklen beenden den Block.
+
+Blindsieb vorbereiten, zwischen Reinigen und Klarspuelen manuell herausnehmen
+und ausspuelen und die gewuenschten weiteren Bloecke jeweils neu starten.
+Das Programm fuehrt keine vollstaendige chemische Reinigung eigenstaendig aus.

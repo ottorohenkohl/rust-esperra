@@ -7,6 +7,7 @@ pub enum BoilerMessage {
     InvalidateTemperature,
     SetActive(bool),
     SetBrewing(bool),
+    SetCleaningTemperature(Option<f64>),
     SwitchHeater,
     UpdateTemperature(f64),
 }

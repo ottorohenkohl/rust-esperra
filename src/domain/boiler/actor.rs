@@ -24,6 +24,7 @@ pub struct BoilerActor<C, H> {
     last_temperature_update: Option<Instant>,
     active: bool,
     brewing: bool,
+    cleaning_temperature: Option<f64>,
     cycle_start: Instant,
     heating_output_port: H,
     pid_service: PidService<C>,
@@ -41,7 +42,7 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         let active = true;
         let brewing = false;
 
-        Self { public_name, actor_ref, config_port, current_temperature, last_temperature_update, active, brewing, cycle_start, heating_output_port, pid_service, lighting_actor }
+        Self { cleaning_temperature: None, public_name, actor_ref, config_port, current_temperature, last_temperature_update, active, brewing, cycle_start, heating_output_port, pid_service, lighting_actor }
     }
 
     fn update_cycle(&mut self) {
@@ -57,7 +58,7 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         let Some(current_temperature) = self.current_temperature else { return false };
         let Some(last_temperature_update) = self.last_temperature_update else { return false };
 
-        let in_valid_temperature_range = (MIN_VALID_TEMPERATURE..MAX_VALID_TEMPERATURE).contains(&current_temperature);
+        let in_valid_temperature_range = (MIN_VALID_TEMPERATURE..=MAX_VALID_TEMPERATURE).contains(&current_temperature);
         let in_valid_time_range = last_temperature_update.elapsed() <= MAX_TEMPERATURE_AGE;
 
         current_temperature.is_finite() && in_valid_temperature_range && in_valid_time_range
@@ -72,7 +73,10 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
 
         let current_temperature = self.current_temperature.unwrap();
         let heater_options = self.config_port.read_heater_options();
-        let temperature_options = self.config_port.read_temperature_options();
+        let mut temperature_options = self.config_port.read_temperature_options();
+        if let Some(target) = self.cleaning_temperature {
+            temperature_options.target_temperature = target;
+        }
         let cycle_elapsed_ms = self.cycle_start.elapsed().as_millis();
 
         if self.brewing || current_temperature < temperature_options.target_temperature - heater_options.boost_interval_size {
@@ -110,7 +114,10 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
 
         let should_heat = self.should_heat();
         let heater_options = self.config_port.read_heater_options();
-        let temperature_options = self.config_port.read_temperature_options();
+        let mut temperature_options = self.config_port.read_temperature_options();
+        if let Some(target) = self.cleaning_temperature {
+            temperature_options.target_temperature = target;
+        }
 
         self.heating_output_port.set_active(should_heat).await;
 
@@ -139,6 +146,10 @@ impl<C, H> Actor for BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         match message {
             BoilerMessage::InvalidateTemperature => self.invalidate_temperature(),
             BoilerMessage::SetActive(active) => self.set_active(active),
+            BoilerMessage::SetCleaningTemperature(target) => {
+                self.cleaning_temperature = target;
+                self.pid_service.reset();
+            }
             BoilerMessage::SetBrewing(active) => self.set_brewing(active),
             BoilerMessage::SwitchHeater => self.switch_heater().await,
             BoilerMessage::UpdateTemperature(measured_temperature) => self.update_temperature(measured_temperature),
