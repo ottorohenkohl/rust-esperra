@@ -20,11 +20,12 @@ pub struct WeightActor<P, L, C> {
     energy_actor: ActorRef<EnergyMessage>,
     brew_actor: ActorRef<BrewMessage>,
     config_port: Arc<C>,
+    shot_weight_armed: bool,
 }
 
 impl<P, L, C> WeightActor<P, L, C> {
     pub fn new(public_name: &'static str, weight_port: P, logging_port: Arc<L>, energy_actor: ActorRef<EnergyMessage>, brew_actor: ActorRef<BrewMessage>, config_port: Arc<C>) -> Self {
-        Self { public_name, weight_port, logging_port, energy_actor, brew_actor, config_port }
+        Self { public_name, weight_port, logging_port, energy_actor, brew_actor, config_port, shot_weight_armed: false }
     }
 }
 
@@ -42,12 +43,20 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
     }
 
     async fn watch_for_full_shot(&mut self, weight: f64) {
-        let stop_weight = self.config_port.read_weight_options().double_shot_weight - SHOT_STOP_OFFSET_GRAMS;
+        let double_shot_weight = self.config_port.read_weight_options().double_shot_weight;
 
-        if weight >= stop_weight {
-            self.brew_actor.tell(None, BrewMessage::SetBrewing(false));
-            self.weight_port.reset_ready_state().await;
+        if self.shot_weight_armed {
+            let stop_weight = double_shot_weight - SHOT_STOP_OFFSET_GRAMS;
+
+            if weight >= stop_weight {
+                self.brew_actor.tell(None, BrewMessage::SetBrewing(false));
+                self.weight_port.reset_ready_state().await;
+            }
+
+            return
         }
+
+        self.shot_weight_armed = weight < double_shot_weight;
     }
 
     async fn shutdown(&mut self) {
@@ -67,6 +76,8 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
             self.brew_actor.tell(None, BrewMessage::SetBrewing(true));
 
             self.watch_for_full_shot(weight).await;
+        } else {
+            self.shot_weight_armed = false;
         }
     }
 }
