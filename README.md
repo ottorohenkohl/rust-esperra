@@ -293,23 +293,22 @@ cargo build --release
 ## Reinigungsblock
 
 `"Start"` auf `<praefix>/in/cleaning` startet einen einzelnen Rueckspuelblock.
-Der CleaningActor wartet auf die bestehenden Actor-Locks (einschliesslich der
-Wassersperre) und 125 Grad Celsius, dann steuert er fuenfmal den BrewActor mit
-`SetBrewing(true)` fuer 10 Sekunden und `SetBrewing(false)` fuer 10 Sekunden.
-Die konfigurierte Preinfusion bleibt dabei wirksam.
+Der CleaningActor versucht einmal, die benoetigten Actor-Locks zu erwerben.
+Schlaegt das fehl, endet der Aufruf ohne Konfigurationsaenderung.
+Nach der ersten Temperaturmessung ab 125 Grad steuert er fuenfmal den BrewActor
+mit `SetBrewing(true)` fuer 10 Sekunden und `SetBrewing(false)` fuer 10 Sekunden.
+Die konfigurierte Preinfusion bleibt dabei wirksam. Weitere Temperaturmessungen
+beeinflussen den laufenden Block nicht.
 
 Der CleaningActor merkt sich die vorherigen TemperatureOptions und setzt ueber
-ConfigMessage::UpdateTemperatureOptions den Sollwert auf 125 Grad. Bei Abschluss
-oder Abbruch stellt er die vorherigen Optionen wieder her. Beide Updates werden
-persistiert; bei Reset oder Stromausfall vor der Wiederherstellung bleibt 125 Grad
-gespeichert. Die Vorbereitung hat ein Timeout von 20 Minuten je Wartephase.
+ConfigMessage::UpdateTemperatureOptions den Sollwert auf 125 Grad. Nach dem Block
+stellt er die vorherigen Optionen wieder her. Beide Updates werden persistiert;
+bei Reset oder Stromausfall vor der Wiederherstellung bleibt 125 Grad gespeichert.
 
-WaterActor ist waehrend der exklusiven Reinigung gesperrt, wie beim UpdateActor;
-eine laufende Wasserueberwachung findet dabei nicht statt. Temperaturmessungen
-laufen weiter und werden vom CleaningActor an den reservierten Boiler weitergegeben.
-Ungueltige oder veraltete Messungen waehrend der Zyklen beenden den Block.
-Die bestehende Temperaturgrenze des Boilers bleibt unveraendert: Messwerte ab
-125 Grad gelten dort als ungueltig und schalten die Heizung ab.
+Der Boiler bleibt ungesperrt und verarbeitet Temperaturmessungen wie bisher.
+Seine bestehende Temperaturgrenze bleibt unveraendert. WaterActor ist waehrend
+der Reinigung gesperrt, wie beim UpdateActor. Die Wartezeit auf Temperatur ist
+nicht begrenzt.
 
 Blindsieb vorbereiten, zwischen Reinigen und Klarspuelen manuell herausnehmen
 und ausspuelen und die gewuenschten weiteren Bloecke jeweils neu starten.
