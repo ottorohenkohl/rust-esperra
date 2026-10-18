@@ -3,7 +3,7 @@ use super::protocol::CleaningMessage;
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::config::port::{ReadConfigPort, TemperatureOptions};
 use crate::domain::config::protocol::ConfigMessage;
-use crate::domain::controls::protocol::{ButtonMessage, WaterMessage};
+use crate::domain::controls::protocol::ButtonMessage;
 use crate::domain::energy::protocol::EnergyMessage;
 use crate::domain::update::protocol::UpdateMessage;
 use crate::library::actor::interface::Actor;
@@ -22,7 +22,6 @@ pub struct CleaningActor<C> {
     actor_ref: ActorRef<CleaningMessage>,
     brew: ActorRef<BrewMessage>,
     button: ActorRef<ButtonMessage>,
-    water: ActorRef<WaterMessage>,
     energy: ActorRef<EnergyMessage>,
     config: ActorRef<ConfigMessage>,
     update: ActorRef<UpdateMessage>,
@@ -32,20 +31,19 @@ pub struct CleaningActor<C> {
 }
 
 impl<C: ReadConfigPort> CleaningActor<C> {
-    pub fn new(public_name: &'static str, config_port: Arc<C>, actor_ref: ActorRef<CleaningMessage>, brew: ActorRef<BrewMessage>, button: ActorRef<ButtonMessage>, water: ActorRef<WaterMessage>, energy: ActorRef<EnergyMessage>, config: ActorRef<ConfigMessage>, update: ActorRef<UpdateMessage>) -> Self {
+    pub fn new(public_name: &'static str, config_port: Arc<C>, actor_ref: ActorRef<CleaningMessage>, brew: ActorRef<BrewMessage>, button: ActorRef<ButtonMessage>, energy: ActorRef<EnergyMessage>, config: ActorRef<ConfigMessage>, update: ActorRef<UpdateMessage>) -> Self {
         let previous_temperature_options = None;
         let next_step = None;
 
         let step = 0;
 
-        Self { public_name, config_port, actor_ref, brew, button, water, energy, config, update, previous_temperature_options, next_step, step }
+        Self { public_name, config_port, actor_ref, brew, button, energy, config, update, previous_temperature_options, next_step, step }
     }
 
     fn release_locks(&self) {
         self.update.unlock(&self.actor_ref);
         self.config.unlock(&self.actor_ref);
         self.energy.unlock(&self.actor_ref);
-        self.water.unlock(&self.actor_ref);
         self.button.unlock(&self.actor_ref);
         self.brew.unlock(&self.actor_ref);
     }
@@ -56,7 +54,6 @@ impl<C: ReadConfigPort> CleaningActor<C> {
         }
 
         let locked = self.brew.lock(&self.actor_ref)
-            && self.water.lock(&self.actor_ref)
             && self.button.lock(&self.actor_ref)
             && self.energy.lock(&self.actor_ref)
             && self.config.lock(&self.actor_ref)
@@ -81,6 +78,15 @@ impl<C: ReadConfigPort> CleaningActor<C> {
         }
     }
 
+    fn finish(&mut self) {
+        let Some(options) = self.previous_temperature_options.take() else { return };
+
+        self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
+        self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(options));
+        self.next_step = None;
+        self.release_locks();
+    }
+
     fn tick(&mut self) {
         let Some(deadline) = self.next_step else { return };
 
@@ -91,13 +97,7 @@ impl<C: ReadConfigPort> CleaningActor<C> {
         }
 
         if self.step == 10 {
-            if let Some(options) = self.previous_temperature_options.take() {
-                self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(options));
-            }
-
-            self.next_step = None;
-
-            self.release_locks();
+            self.finish();
 
             return;
         }
@@ -118,6 +118,7 @@ impl<C: ReadConfigPort> Actor for CleaningActor<C> {
     async fn handle(&mut self, message: Self::Message) {
         match message {
             CleaningMessage::Start => self.start(),
+            CleaningMessage::NotEnoughWater => self.finish(),
             CleaningMessage::Tick => self.tick(),
             CleaningMessage::UpdateTemperature(reading) => self.update_temperature(reading),
         }

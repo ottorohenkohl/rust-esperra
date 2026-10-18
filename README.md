@@ -306,9 +306,11 @@ stellt er die vorherigen Optionen wieder her. Beide Updates werden persistiert;
 bei Reset oder Stromausfall vor der Wiederherstellung bleibt 125 Grad gespeichert.
 
 Der Boiler bleibt ungesperrt und verarbeitet Temperaturmessungen wie bisher.
-Seine bestehende Temperaturgrenze bleibt unveraendert. WaterActor ist waehrend
-der Reinigung gesperrt, wie beim UpdateActor. Die Wartezeit auf Temperatur ist
-nicht begrenzt.
+Seine bestehende Temperaturgrenze bleibt unveraendert. WaterActor bleibt aktiv
+und sendet bei Wassermangel `CleaningMessage::NotEnoughWater`. Dadurch wird der
+Block sowohl beim Aufheizen als auch waehrend der Zyklen beendet, der Bezug
+gestoppt und der vorherige Sollwert wiederhergestellt. Die Wartezeit auf
+Temperatur ist nicht begrenzt.
 
 Blindsieb vorbereiten, zwischen Reinigen und Klarspuelen manuell herausnehmen
 und ausspuelen und die gewuenschten weiteren Bloecke jeweils neu starten.

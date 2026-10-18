@@ -140,10 +140,10 @@ async fn main(spawner: Spawner) {
     let boiler_actor = BoilerActor::new("boiler", boiler_actor_ref.clone(), Arc::clone(&config_adapter), heating_output_adapter, lighting_actor_ref.clone());
     let brew_actor = BrewActor::new("brew", boiler_actor_ref.clone(), Arc::clone(&config_adapter), pump_output_adapter, valve_output_adapter);
     let button_actor = ButtonActor::new("button", button_actor_ref.clone(), brew_actor_ref.clone(), power_input_adapter, status_input_adapter, update_actor_ref.clone(), energy_actor_ref.clone());
-    let water_actor = WaterActor::new("water", water_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), lighting_actor_ref.clone(), water_input_adapter, Arc::clone(&logging_adapter));
+    let water_actor = WaterActor::new("water", water_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), lighting_actor_ref.clone(), water_input_adapter, cleaning_actor_ref.clone(), Arc::clone(&logging_adapter));
     let lighting_actor = LightingActor::new("lighting", power_light_output_adapter, status_light_output_adapter);
     let temperature_sensor_actor = TemperatureSensorActor::new("temperature", temperature_adapter, Arc::clone(&logging_adapter), Vec::from_slice(&[boiler_actor_ref.subscriber(&temperature_sensor_actor_ref), cleaning_actor_ref.subscriber(&temperature_sensor_actor_ref)]).unwrap());
-    let cleaning_actor = CleaningActor::new("cleaning", Arc::clone(&config_adapter), cleaning_actor_ref.clone(), brew_actor_ref.clone(), button_actor_ref.clone(), water_actor_ref.clone(), energy_actor_ref.clone(), config_actor_ref.clone(), update_actor_ref.clone());
+    let cleaning_actor = CleaningActor::new("cleaning", Arc::clone(&config_adapter), cleaning_actor_ref.clone(), brew_actor_ref.clone(), button_actor_ref.clone(), energy_actor_ref.clone(), config_actor_ref.clone(), update_actor_ref.clone());
     let update_actor = UpdateActor::new("update", update_actor_ref.clone(), update_adapter, button_actor_ref, water_actor_ref, boiler_actor_ref.clone(), brew_actor_ref.clone(), temperature_sensor_actor_ref, lighting_actor_ref.clone());
     let config_actor = ConfigActor::new("config", Arc::clone(&config_adapter), Arc::clone(&logging_adapter));
     let energy_actor = EnergyActor::new("energy", energy_actor_ref.clone(), boiler_actor_ref.clone(), brew_actor_ref.clone(), lighting_actor_ref.clone(), weight_actor_ref.clone(), Arc::clone(&logging_adapter));

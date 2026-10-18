@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum CleaningMessage {
     Start,
+    NotEnoughWater,
     Tick,
     UpdateTemperature(Option<f64>),
 }
