@@ -57,7 +57,7 @@ impl<C, H> BoilerActor<C, H> where C: ReadConfigPort, H: OutputPort {
         let Some(current_temperature) = self.current_temperature else { return false };
         let Some(last_temperature_update) = self.last_temperature_update else { return false };
 
-        let in_valid_temperature_range = (MIN_VALID_TEMPERATURE..=MAX_VALID_TEMPERATURE).contains(&current_temperature);
+        let in_valid_temperature_range = (MIN_VALID_TEMPERATURE..MAX_VALID_TEMPERATURE).contains(&current_temperature);
         let in_valid_time_range = last_temperature_update.elapsed() <= MAX_TEMPERATURE_AGE;
 
         current_temperature.is_finite() && in_valid_temperature_range && in_valid_time_range

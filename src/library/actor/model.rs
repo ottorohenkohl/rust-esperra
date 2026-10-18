@@ -39,11 +39,6 @@ impl<Message: 'static> ActorRef<Message> {
         self.mailbox.unlock(caller.address())
     }
 
-    pub fn system_subscriber<PublishedMessage, const SIZE: usize>(&self) -> Subscriber<PublishedMessage, SIZE> where Message: From<PublishedMessage>, PublishedMessage: 'static {
-        let actor_ref = self.clone();
-        Subscriber { tell: Arc::new(move |message| actor_ref.system_tell(Message::from(message))) }
-    }
-
     pub fn subscriber<PublishedMessage, CallerMessage, const SIZE: usize>(&self, caller: &ActorRef<CallerMessage>) -> Subscriber<PublishedMessage, SIZE> where Message: From<PublishedMessage>, PublishedMessage: 'static, CallerMessage: 'static {
         let actor_ref = self.clone();
 

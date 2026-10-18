@@ -83,11 +83,6 @@ impl<C, P, V> Actor for BrewActor<C, P, V> where C: ReadConfigPort, P: OutputPor
 
     async fn handle(&mut self, message: Self::Message) {
         match message {
-            BrewMessage::SetCleaningPump(active) => {
-                self.set_brewing(false).await;
-                self.valve_output_port.set_active(active).await;
-                self.pump_output_port.set_active(active).await;
-            }
             BrewMessage::SetBrewing(active) => self.set_brewing(active).await,
             BrewMessage::Tick => self.tick().await,
         }

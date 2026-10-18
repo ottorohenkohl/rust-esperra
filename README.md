@@ -293,16 +293,23 @@ cargo build --release
 ## Reinigungsblock
 
 `"Start"` auf `<praefix>/in/cleaning` startet einen einzelnen Rueckspuelblock.
-Der CleaningActor wartet auf ausreichend Wasser und 125 Grad Celsius (maximal
-20 Minuten), dann schaltet er fuenfmal Pumpe und Bruehventil fuer 10 Sekunden
-ein und fuer 10 Sekunden aus, ohne Preinfusion. Der Sollwert wird nur temporaer
-ueber den ConfigActor auf 125 Grad gesetzt; der CleaningActor merkt sich den
-vorherigen Sollwert und stellt ihn bei Abschluss oder Abbruch wieder her.
-Beide Aenderungen werden wie normale Konfigurationsupdates im Flash gespeichert.
-Bei Stromausfall oder Reset vor der Wiederherstellung bleibt der Reinigungssollwert
-gespeichert.
-Temperaturmessung und Wasserueberwachung bleiben aktiv. Wassermangel oder
-ungueltige/veraltete Temperatur waehrend der Zyklen beenden den Block.
+Der CleaningActor wartet auf die bestehenden Actor-Locks (einschliesslich der
+Wassersperre) und 125 Grad Celsius, dann steuert er fuenfmal den BrewActor mit
+`SetBrewing(true)` fuer 10 Sekunden und `SetBrewing(false)` fuer 10 Sekunden.
+Die konfigurierte Preinfusion bleibt dabei wirksam.
+
+Der CleaningActor merkt sich die vorherigen TemperatureOptions und setzt ueber
+ConfigMessage::UpdateTemperatureOptions den Sollwert auf 125 Grad. Bei Abschluss
+oder Abbruch stellt er die vorherigen Optionen wieder her. Beide Updates werden
+persistiert; bei Reset oder Stromausfall vor der Wiederherstellung bleibt 125 Grad
+gespeichert. Die Vorbereitung hat ein Timeout von 20 Minuten je Wartephase.
+
+WaterActor ist waehrend der exklusiven Reinigung gesperrt, wie beim UpdateActor;
+eine laufende Wasserueberwachung findet dabei nicht statt. Temperaturmessungen
+laufen weiter und werden vom CleaningActor an den reservierten Boiler weitergegeben.
+Ungueltige oder veraltete Messungen waehrend der Zyklen beenden den Block.
+Die bestehende Temperaturgrenze des Boilers bleibt unveraendert: Messwerte ab
+125 Grad gelten dort als ungueltig und schalten die Heizung ab.
 
 Blindsieb vorbereiten, zwischen Reinigen und Klarspuelen manuell herausnehmen
 und ausspuelen und die gewuenschten weiteren Bloecke jeweils neu starten.
