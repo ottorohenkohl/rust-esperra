@@ -1,4 +1,5 @@
 use super::protocol::CleaningMessage;
+
 use crate::domain::brewing::protocol::BrewMessage;
 use crate::domain::config::port::{ReadConfigPort, TemperatureOptions};
 use crate::domain::config::protocol::ConfigMessage;
@@ -16,6 +17,7 @@ const CYCLE_INTERVAL: Duration = Duration::from_secs(10);
 
 pub struct CleaningActor<C> {
     public_name: &'static str,
+
     config_port: Arc<C>,
     actor_ref: ActorRef<CleaningMessage>,
     brew: ActorRef<BrewMessage>,
@@ -31,7 +33,12 @@ pub struct CleaningActor<C> {
 
 impl<C: ReadConfigPort> CleaningActor<C> {
     pub fn new(public_name: &'static str, config_port: Arc<C>, actor_ref: ActorRef<CleaningMessage>, brew: ActorRef<BrewMessage>, button: ActorRef<ButtonMessage>, water: ActorRef<WaterMessage>, energy: ActorRef<EnergyMessage>, config: ActorRef<ConfigMessage>, update: ActorRef<UpdateMessage>) -> Self {
-        Self { public_name, config_port, actor_ref, brew, button, water, energy, config, update, previous_temperature_options: None, next_step: None, step: 0 }
+        let previous_temperature_options = None;
+        let next_step = None;
+
+        let step = 0;
+
+        Self { public_name, config_port, actor_ref, brew, button, water, energy, config, update, previous_temperature_options, next_step, step }
     }
 
     fn release_locks(&self) {
@@ -55,14 +62,15 @@ impl<C: ReadConfigPort> CleaningActor<C> {
             && self.config.lock(&self.actor_ref)
             && self.update.lock(&self.actor_ref);
 
-        if !locked {
-            self.release_locks();
+        if locked {
+            self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
+            self.previous_temperature_options = Some(self.config_port.read_temperature_options());
+            self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(TemperatureOptions { target_temperature: CLEANING_TEMPERATURE }));
+
             return;
         }
 
-        self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
-        self.previous_temperature_options = Some(self.config_port.read_temperature_options());
-        self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(TemperatureOptions { target_temperature: CLEANING_TEMPERATURE }));
+        self.release_locks();
     }
 
     fn update_temperature(&mut self, reading: Option<f64>) {
@@ -77,6 +85,7 @@ impl<C: ReadConfigPort> CleaningActor<C> {
         let Some(deadline) = self.next_step else { return };
 
         self.brew.tell(Some(&self.actor_ref), BrewMessage::Tick);
+
         if Instant::now() < deadline {
             return;
         }
@@ -85,8 +94,11 @@ impl<C: ReadConfigPort> CleaningActor<C> {
             if let Some(options) = self.previous_temperature_options.take() {
                 self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(options));
             }
+
             self.next_step = None;
+
             self.release_locks();
+
             return;
         }
 

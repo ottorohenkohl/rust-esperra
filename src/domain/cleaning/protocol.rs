@@ -1,4 +1,5 @@
 use crate::domain::gpio::protocol::TemperatureSensorResponse;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
