@@ -1,7 +1,7 @@
 use super::protocol::CleaningMessage;
 
 use crate::domain::brewing::protocol::BrewMessage;
-use crate::domain::config::port::{ReadConfigPort, TemperatureOptions};
+use crate::domain::config::port::{PreinfusionOptions, ReadConfigPort, TemperatureOptions};
 use crate::domain::config::protocol::ConfigMessage;
 use crate::domain::controls::protocol::ButtonMessage;
 use crate::domain::energy::protocol::EnergyMessage;
@@ -26,6 +26,7 @@ pub struct CleaningActor<C> {
     config: ActorRef<ConfigMessage>,
     update: ActorRef<UpdateMessage>,
     previous_temperature_options: Option<TemperatureOptions>,
+    previous_preinfusion_options: Option<PreinfusionOptions>,
     next_step: Option<Instant>,
     step: u8,
 }
@@ -33,11 +34,12 @@ pub struct CleaningActor<C> {
 impl<C: ReadConfigPort> CleaningActor<C> {
     pub fn new(public_name: &'static str, config_port: Arc<C>, actor_ref: ActorRef<CleaningMessage>, brew: ActorRef<BrewMessage>, button: ActorRef<ButtonMessage>, energy: ActorRef<EnergyMessage>, config: ActorRef<ConfigMessage>, update: ActorRef<UpdateMessage>) -> Self {
         let previous_temperature_options = None;
+        let previous_preinfusion_options = None;
         let next_step = None;
 
         let step = 0;
 
-        Self { public_name, config_port, actor_ref, brew, button, energy, config, update, previous_temperature_options, next_step, step }
+        Self { public_name, config_port, actor_ref, brew, button, energy, config, update, previous_temperature_options, previous_preinfusion_options, next_step, step }
     }
 
     fn release_locks(&self) {
@@ -62,6 +64,12 @@ impl<C: ReadConfigPort> CleaningActor<C> {
         if locked {
             self.previous_temperature_options = Some(self.config_port.read_temperature_options());
 
+            let preinfusion_options = self.config_port.read_preinfusion_options();
+            if preinfusion_options.enabled {
+                self.previous_preinfusion_options = Some(preinfusion_options);
+                self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdatePreinfusionOptions(PreinfusionOptions { enabled: false, ..preinfusion_options }));
+            }
+
             self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
             self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(TemperatureOptions { target_temperature: CLEANING_TEMPERATURE }));
 
@@ -72,7 +80,9 @@ impl<C: ReadConfigPort> CleaningActor<C> {
     }
 
     fn update_temperature(&mut self, reading: Option<f64>) {
-        if self.previous_temperature_options.is_some() && self.next_step.is_none() && reading.is_some_and(|value| value >= CLEANING_TEMPERATURE) {
+        if self.previous_temperature_options.is_some() && self.next_step.is_none() && reading.is_some_and(|value| value >= CLEANING_TEMPERATURE)
+            // ConfigActor applies the queued update asynchronously, even if already hot.
+            && !self.config_port.read_preinfusion_options().enabled {
             self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(true));
             self.step = 1;
             self.next_step = Some(Instant::now() + CYCLE_INTERVAL);
@@ -84,6 +94,10 @@ impl<C: ReadConfigPort> CleaningActor<C> {
 
         self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(false));
         self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdateTemperatureOptions(options));
+
+        if let Some(options) = self.previous_preinfusion_options.take() {
+            self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdatePreinfusionOptions(options));
+        }
 
         self.next_step = None;
 
