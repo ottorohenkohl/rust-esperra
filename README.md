@@ -183,6 +183,7 @@ Bei einem Topic-Präfix `esperra` werden folgende Kommandokanäle abonniert:
 | --- | --- | --- |
 | `esperra/in/boiler` | `BoilerMessage` | `{"SetActive":true}` |
 | `esperra/in/brew` | `BrewMessage` | `{"SetBrewing":true}` |
+| `esperra/in/cleaning` | `CleaningMessage` | `"Start"` |
 | `esperra/in/update` | `UpdateMessage` | `"Start"` |
 | `esperra/in/config` | `ConfigMessage` | `{"UpdateTemperatureOptions":{"target_temperature":93.0}}` |
 | `esperra/in/energy` | `EnergyMessage` | `{"SetActive":true}` |
@@ -288,3 +289,29 @@ Der Release-Job veröffentlicht die versionierte Datei und ersetzt zusätzlich `
 cargo fmt --all -- --check
 cargo build --release
 ```
+
+## Reinigungsblock
+
+`"Start"` auf `<praefix>/in/cleaning` startet einen einzelnen Rueckspuelblock.
+Der CleaningActor versucht einmal, die benoetigten Actor-Locks zu erwerben.
+Schlaegt das fehl, endet der Aufruf ohne Konfigurationsaenderung.
+Nach der ersten Temperaturmessung ab 125 Grad steuert er fuenfmal den BrewActor
+mit `SetBrewing(true)` fuer 10 Sekunden und `SetBrewing(false)` fuer 10 Sekunden.
+Die konfigurierte Preinfusion bleibt dabei wirksam. Weitere Temperaturmessungen
+beeinflussen den laufenden Block nicht.
+
+Der CleaningActor merkt sich die vorherigen TemperatureOptions und setzt ueber
+ConfigMessage::UpdateTemperatureOptions den Sollwert auf 125 Grad. Nach dem Block
+stellt er die vorherigen Optionen wieder her. Beide Updates werden persistiert;
+bei Reset oder Stromausfall vor der Wiederherstellung bleibt 125 Grad gespeichert.
+
+Der Boiler bleibt ungesperrt und verarbeitet Temperaturmessungen wie bisher.
+Seine bestehende Temperaturgrenze bleibt unveraendert. WaterActor bleibt aktiv
+und sendet bei Wassermangel `CleaningMessage::NotEnoughWater`. Dadurch wird der
+Block sowohl beim Aufheizen als auch waehrend der Zyklen beendet, der Bezug
+gestoppt und der vorherige Sollwert wiederhergestellt. Die Wartezeit auf
+Temperatur ist nicht begrenzt.
+
+Blindsieb vorbereiten, zwischen Reinigen und Klarspuelen manuell herausnehmen
+und ausspuelen und die gewuenschten weiteren Bloecke jeweils neu starten.
+Das Programm fuehrt keine vollstaendige chemische Reinigung eigenstaendig aus.

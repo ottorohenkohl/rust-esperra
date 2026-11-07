@@ -4,6 +4,7 @@ use super::task::messaging_task;
 
 use crate::domain::boiler::protocol::BoilerMessage;
 use crate::domain::brewing::protocol::BrewMessage;
+use crate::domain::cleaning::protocol::CleaningMessage;
 use crate::domain::config::port::ReadConfigPort;
 use crate::domain::config::protocol::ConfigMessage;
 use crate::domain::energy::protocol::EnergyMessage;
@@ -112,11 +113,12 @@ pub struct MqttMessagingImpl {
     config: ActorRef<ConfigMessage>,
     energy: ActorRef<EnergyMessage>,
     weight: ActorRef<WeightMessage>,
+    cleaning: ActorRef<CleaningMessage>,
 }
 
 impl MqttMessagingImpl {
-    pub fn new(network: &'static NetworkStackImpl, config_port: Arc<dyn ReadConfigPort>, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, config: ActorRef<ConfigMessage>, energy: ActorRef<EnergyMessage>, weight: ActorRef<WeightMessage>, spawner: Spawner) {
-        let implementation = Self { network, config_port, boiler, brew, update, config, energy, weight };
+    pub fn new(network: &'static NetworkStackImpl, config_port: Arc<dyn ReadConfigPort>, boiler: ActorRef<BoilerMessage>, brew: ActorRef<BrewMessage>, update: ActorRef<UpdateMessage>, config: ActorRef<ConfigMessage>, energy: ActorRef<EnergyMessage>, weight: ActorRef<WeightMessage>, cleaning: ActorRef<CleaningMessage>, spawner: Spawner) {
+        let implementation = Self { network, config_port, boiler, brew, update, config, energy, weight, cleaning };
 
         spawner.spawn(messaging_task(implementation).unwrap());
     }
@@ -204,6 +206,7 @@ impl MqttMessagingImpl {
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/config").await?;
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/energy").await?;
         self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/weight").await?;
+        self.subscribe(&mut client, info.mqtt_topic_prefix.as_str(), "/in/cleaning").await?;
 
         loop {
             match select(client.poll_header(), logging::receive_log()).await {
@@ -266,7 +269,12 @@ impl MqttMessagingImpl {
         let energy_topic = Self::topic(topic_prefix, "/in/energy").map_err(|_| MessagingError::Config)?;
         let weight_topic = Self::topic(topic_prefix, "/in/weight").map_err(|_| MessagingError::Config)?;
 
+        let cleaning_topic = Self::topic(topic_prefix, "/in/cleaning").map_err(|_| MessagingError::Config)?;
+
         match topic {
+            topic if topic == cleaning_topic.as_str() => {
+                self.dispatch(payload, &self.cleaning);
+            }
             topic if topic == boiler_topic.as_str() => {
                 self.dispatch(payload, &self.boiler);
             }

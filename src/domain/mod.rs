@@ -1,6 +1,7 @@
 pub mod boiler;
 pub mod brewing;
 pub mod config;
+pub mod cleaning;
 pub mod controls;
 pub mod energy;
 pub mod gpio;
