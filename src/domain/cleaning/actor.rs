@@ -65,8 +65,10 @@ impl<C: ReadConfigPort> CleaningActor<C> {
             self.previous_temperature_options = Some(self.config_port.read_temperature_options());
 
             let preinfusion_options = self.config_port.read_preinfusion_options();
+
             if preinfusion_options.enabled {
                 self.previous_preinfusion_options = Some(preinfusion_options);
+
                 self.config.tell(Some(&self.actor_ref), ConfigMessage::UpdatePreinfusionOptions(PreinfusionOptions { enabled: false, ..preinfusion_options }));
             }
 
@@ -80,9 +82,7 @@ impl<C: ReadConfigPort> CleaningActor<C> {
     }
 
     fn update_temperature(&mut self, reading: Option<f64>) {
-        if self.previous_temperature_options.is_some() && self.next_step.is_none() && reading.is_some_and(|value| value >= CLEANING_TEMPERATURE)
-            // ConfigActor applies the queued update asynchronously, even if already hot.
-            && !self.config_port.read_preinfusion_options().enabled {
+        if self.previous_temperature_options.is_some() && self.next_step.is_none() && reading.is_some_and(|value| value >= CLEANING_TEMPERATURE) {
             self.brew.tell(Some(&self.actor_ref), BrewMessage::SetBrewing(true));
             self.step = 1;
             self.next_step = Some(Instant::now() + CYCLE_INTERVAL);
