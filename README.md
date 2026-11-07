@@ -297,8 +297,13 @@ Der CleaningActor versucht einmal, die benoetigten Actor-Locks zu erwerben.
 Schlaegt das fehl, endet der Aufruf ohne Konfigurationsaenderung.
 Nach der ersten Temperaturmessung ab 125 Grad steuert er fuenfmal den BrewActor
 mit `SetBrewing(true)` fuer 10 Sekunden und `SetBrewing(false)` fuer 10 Sekunden.
-Die konfigurierte Preinfusion bleibt dabei wirksam. Weitere Temperaturmessungen
-beeinflussen den laufenden Block nicht.
+Eine zuvor aktivierte Preinfusion wird vor dem ersten Bezug ueber den ConfigActor
+deaktiviert und nach dem Block oder bei Wassermangel mit ihren urspruenglichen
+Optionen wiederhergestellt. War sie bereits deaktiviert, bleibt sie unveraendert.
+Der erste Bezug wartet, bis die Deaktivierung in der Konfiguration wirksam ist.
+Weitere Temperaturmessungen beeinflussen den laufenden Block nicht.
+Die Preinfusions-Updates werden wie die Temperatur-Updates persistiert; bei Reset
+oder Stromausfall vor der Wiederherstellung bleibt die Preinfusion deaktiviert.
 
 Der CleaningActor merkt sich die vorherigen TemperatureOptions und setzt ueber
 ConfigMessage::UpdateTemperatureOptions den Sollwert auf 125 Grad. Nach dem Block
