@@ -46,7 +46,6 @@ impl WeightPort for BookooWeightAdapter {
             BluetoothConnectionState::AlreadyConnected => ConnectionState::AlreadyConnected,
             BluetoothConnectionState::ConnectionEstablished => {
                 *LATEST_WEIGHT.lock().await = 0.0;
-                *READY_STATE.lock().await = false;
 
                 ConnectionState::ConnectionEstablished
             },
