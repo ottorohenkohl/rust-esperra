@@ -27,6 +27,10 @@ impl<Message: 'static> ActorRef<Message> {
         self.mailbox.try_send(Envelope { caller: caller.map(Caller::address), is_system: false, message });
     }
 
+    pub fn try_tell(&self, caller: Option<&dyn Caller>, message: Message) -> bool {
+        self.mailbox.try_send(Envelope { caller: caller.map(Caller::address), is_system: false, message })
+    }
+
     pub fn system_tell(&self, message: Message) {
         self.mailbox.try_send(Envelope { caller: None, is_system: true, message });
     }

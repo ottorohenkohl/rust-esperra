@@ -40,8 +40,8 @@ impl<Message: 'static, const SIZE: usize> Mailbox<Message> for EmbassyMailboxImp
         from_ref(self).addr()
     }
 
-    fn try_send(&self, envelope: Envelope<Message>) {
-        let _ = self.channel.try_send(envelope);
+    fn try_send(&self, envelope: Envelope<Message>) -> bool {
+        self.channel.try_send(envelope).is_ok()
     }
 
     fn lock(&self, owner: usize) -> bool {
