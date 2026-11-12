@@ -198,15 +198,31 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
                 }
             };
 
-            let disconnected = async {
+            let connection_events = async {
                 loop {
-                    if matches!(connection.next().await, ConnectionEvent::Disconnected { .. }) {
-                        return
+                    match connection.next().await {
+                        ConnectionEvent::RequestConnectionParams(request) => {
+                            log::info!("Bluetooth connection parameter request: {:?}", request.params());
+
+                            // Dropping the request does not send a response to the peripheral.
+                            if let Err(error) = request.accept(None, &stack).await {
+                                log::warn!("Bluetooth connection parameter response failed: {:?}", error);
+                            }
+                        },
+                        ConnectionEvent::ConnectionParamsUpdated { conn_interval, peripheral_latency, supervision_timeout } => {
+                            log::info!("Bluetooth connection parameters updated: interval={:?}, latency={}, timeout={:?}", conn_interval, peripheral_latency, supervision_timeout);
+                        },
+                        ConnectionEvent::Disconnected { reason } => {
+                            log::warn!("Bluetooth disconnected: {:?}", reason);
+
+                            return
+                        },
+                        _ => {},
                     }
                 }
             };
 
-            let _ = select3(client.task(), session, disconnected).await;
+            let _ = select3(client.task(), session, connection_events).await;
 
             CONNECTION_RESULT.signal(BluetoothConnectionState::ConnectionFailed);
         }
