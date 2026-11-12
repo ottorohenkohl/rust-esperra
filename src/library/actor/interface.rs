@@ -10,7 +10,7 @@ pub trait Actor {
 
 pub trait Mailbox<Message: 'static> {
     fn address(&self) -> usize;
-    fn try_send(&self, envelope: Envelope<Message>) -> bool;
+    fn try_send(&self, envelope: Envelope<Message>);
     fn lock(&self, owner: usize) -> bool;
     fn unlock(&self, owner: usize) -> bool;
 }

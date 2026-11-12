@@ -49,20 +49,14 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
             let stop_weight = double_shot_weight - SHOT_STOP_OFFSET_GRAMS;
 
             if weight >= stop_weight {
-                if self.brew_actor.try_tell(None, BrewMessage::SetBrewing(false)) {
-                    self.weight_port.reset_ready_state().await;
-                }
-
-                return
+                self.brew_actor.tell(None, BrewMessage::SetBrewing(false));
+                self.weight_port.reset_ready_state().await;
             }
-
-            self.brew_actor.tell(None, BrewMessage::SetBrewing(true));
 
             return
         }
 
         self.shot_weight_armed = weight < double_shot_weight;
-        self.brew_actor.tell(None, BrewMessage::SetBrewing(true));
     }
 
     async fn shutdown(&mut self) {
@@ -79,6 +73,8 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
         self.logging_port.log(self, None, &weight);
 
         if self.weight_port.is_ready_state().await {
+            self.brew_actor.tell(None, BrewMessage::SetBrewing(true));
+
             self.watch_for_full_shot(weight).await;
         } else {
             self.shot_weight_armed = false;
