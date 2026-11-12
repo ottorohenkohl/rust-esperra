@@ -198,15 +198,19 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
                 }
             };
 
-            let disconnected = async {
+            let connection_events = async {
                 loop {
-                    if matches!(connection.next().await, ConnectionEvent::Disconnected { .. }) {
-                        return
+                    match connection.next().await {
+                        ConnectionEvent::RequestConnectionParams(request) => {
+                            let _ = request.accept(None, &stack).await;
+                        },
+                        ConnectionEvent::Disconnected { .. } => return,
+                        _ => {},
                     }
                 }
             };
 
-            let _ = select3(client.task(), session, disconnected).await;
+            let _ = select3(client.task(), session, connection_events).await;
 
             CONNECTION_RESULT.signal(BluetoothConnectionState::ConnectionFailed);
         }
