@@ -49,6 +49,7 @@ impl WeightPort for BookooWeightAdapter {
 
                 ConnectionState::ConnectionEstablished
             },
+            BluetoothConnectionState::PoweredOff => ConnectionState::PoweredOff,
             BluetoothConnectionState::ConnectionFailed => ConnectionState::ConnectionFailed,
         }
     }

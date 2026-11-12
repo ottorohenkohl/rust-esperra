@@ -38,6 +38,12 @@ impl<P, L, C> WeightActor<P, L, C> where P: WeightPort, L: LoggingPort, C: ReadC
 
                 false
             },
+            ConnectionState::PoweredOff => {
+                self.shot_weight_armed = false;
+                self.energy_actor.tell(None, EnergyMessage::SetActive(false));
+
+                true
+            },
             ConnectionState::ConnectionFailed => true,
         }
     }

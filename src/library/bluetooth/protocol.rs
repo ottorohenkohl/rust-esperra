@@ -2,6 +2,7 @@ use heapless::Vec;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BluetoothConnectionState {
+    PoweredOff,
     AlreadyConnected,
     ConnectionEstablished,
     ConnectionFailed,

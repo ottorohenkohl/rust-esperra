@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConnectionState {
+    PoweredOff,
     AlreadyConnected,
     ConnectionEstablished,
     ConnectionFailed,
