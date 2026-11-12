@@ -1,6 +1,6 @@
 use super::protocol::{BluetoothCommand, BluetoothConnectionState, BluetoothNotification, BluetoothProfile};
 
-use super::implementation::{COMMANDS, CONNECTION_RESULT, NOTIFICATIONS};
+use super::implementation::{COMMANDS, CONNECTION_RESULT, NOTIFICATIONS, POWERED_OFF};
 
 use core::cell::RefCell;
 use embassy_futures::select::Either3;
@@ -14,6 +14,8 @@ use trouble_host::prelude::*;
 use critical_section::Mutex as CriticalSectionMutex;
 
 use embassy_futures::select::{select, select3};
+
+const REMOTE_POWER_OFF_REASON: u8 = 0x15;
 
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(10);
 const GATT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -204,7 +206,13 @@ pub async fn bluetooth_task(controller: ExternalController<BleConnector<'static>
                         ConnectionEvent::RequestConnectionParams(request) => {
                             let _ = request.accept(None, &stack).await;
                         },
-                        ConnectionEvent::Disconnected { .. } => return,
+                        ConnectionEvent::Disconnected { reason } => {
+                            if reason.into_inner() == REMOTE_POWER_OFF_REASON {
+                                POWERED_OFF.signal(());
+                            }
+
+                            return
+                        },
                         _ => {},
                     }
                 }
