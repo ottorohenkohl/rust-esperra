@@ -13,6 +13,7 @@ use esp_hal::peripherals::BT;
 
 pub static COMMANDS: Channel<CriticalSectionRawMutex, BluetoothCommand, 4> = Channel::new();
 pub static CONNECTION_RESULT: Signal<CriticalSectionRawMutex, BluetoothConnectionState> = Signal::new();
+pub static POWERED_OFF: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 pub static NOTIFICATIONS: Channel<CriticalSectionRawMutex, BluetoothNotification, 8> = Channel::new();
 
 #[derive(Clone, Copy)]
@@ -20,6 +21,10 @@ pub struct BluetoothClient;
 
 impl BluetoothClient {
     pub async fn connect(&self, profile: BluetoothProfile) -> BluetoothConnectionState {
+        if POWERED_OFF.try_take().is_some() {
+            return BluetoothConnectionState::PoweredOff
+        }
+
         CONNECTION_RESULT.reset();
         COMMANDS.send(BluetoothCommand::Connect(profile)).await;
         CONNECTION_RESULT.wait().await
